@@ -75,14 +75,16 @@ async function runTradingCycle() {
   const signal = strategy(candles, config.strategy.params);
   log(`📈 Strategy Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
   
-  // 4. Execute signal
+  // 4. Execute signal with leverage
   if (signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
-    const amount = config.trading.tradeAmount / currentPrice;
-    trader.buy(config.symbol, currentPrice, amount, signal.reason);
+    const leverage = config.trading.leverage || 1;
+    const effectiveAmount = (config.trading.tradeAmount * leverage) / currentPrice;
+    trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } else if (signal.signal === 'sell' && trader.positions.length > 0) {
     // Close oldest position
     const oldestPosition = trader.positions[0];
-    trader.sell(oldestPosition.id, currentPrice, signal.reason);
+    const indicators = signal.indicators || {};
+    trader.sell(oldestPosition.id, currentPrice, signal.reason, indicators);
   }
   
   // 5. Log stats
@@ -109,14 +111,15 @@ async function main() {
   log('🤖 Crypto Trading Bot Started!');
   log(`📊 Trading ${config.symbol} on ${config.timeframe} timeframe`);
   log(`💵 Paper Trading with ${config.paperTrading.initialBalance} USDT`);
+  log(`⚡ Leverage: ${config.trading.leverage}x`);
   log(`🎯 Strategy: ${config.strategy.name} v${config.strategy.version}`);
   
   // Run immediately
   await runTradingCycle();
   
-  // Then run every 5 minutes
-  const intervalMs = 5 * 60 * 1000; // 5 minutes
-  log(`⏰ Next cycle in 5 minutes...`);
+  // Then run every 1 minute (matching 1m timeframe)
+  const intervalMs = 60 * 1000; // 1 minute
+  log(`⏰ Next cycle in 1 minute...`);
   
   setInterval(async () => {
     try {

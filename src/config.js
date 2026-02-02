@@ -12,27 +12,28 @@ export const config = {
   
   // Trading settings
   trading: {
-    tradeAmount: 100, // USDT per trade
-    maxOpenTrades: 5,
-    stopLossPercent: 2,
-    takeProfitPercent: 3,
+    tradeAmount: 100, // USDT per trade (before leverage)
+    leverage: 10, // 10x leverage
+    maxOpenTrades: 10, // More positions
+    stopLossPercent: 1.5, // Tighter SL with leverage
+    takeProfitPercent: 2, // Tighter TP with leverage
   },
   
-  // Strategy settings
+  // Strategy settings - more aggressive for frequent trades
   strategy: {
     name: 'rsi_ma_crossover',
-    version: 1,
+    version: 2,
     params: {
       rsiPeriod: 14,
-      rsiOversold: 30,
-      rsiOverbought: 70,
-      maFastPeriod: 9,
-      maSlowPeriod: 21,
+      rsiOversold: 40, // Less strict (was 30)
+      rsiOverbought: 60, // Less strict (was 70)
+      maFastPeriod: 5, // Faster MA (was 9)
+      maSlowPeriod: 13, // Faster MA (was 21)
     }
   },
   
-  // Timeframe
-  timeframe: '5m',
+  // Timeframe - shorter for more signals
+  timeframe: '1m', // Changed from 5m to 1m
   
   // Paths
   paths: {

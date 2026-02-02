@@ -72,8 +72,8 @@ export class PaperTrader {
   }
 
   // Open a new position
-  buy(symbol, price, amount, reason) {
-    const cost = price * amount;
+  buy(symbol, price, amount, reason, leverage = 1) {
+    const cost = (price * amount) / leverage; // Actual margin required
     if (cost > this.balance) {
       return { success: false, reason: 'Insufficient balance' };
     }
@@ -85,6 +85,7 @@ export class PaperTrader {
       entryPrice: price,
       amount,
       cost,
+      leverage,
       reason,
       openTime: new Date().toISOString(),
     };
@@ -93,7 +94,7 @@ export class PaperTrader {
     this.positions.push(position);
     this.saveState();
 
-    console.log(`🟢 BUY: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${cost.toFixed(2)} USDT)`);
+    console.log(`🟢 BUY: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${cost.toFixed(2)} USDT)`);
     return { success: true, position };
   }
 
