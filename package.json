@@ -1,0 +1,17 @@
+{
+  "name": "crypto-bot",
+  "version": "0.1.0",
+  "description": "Self-improving crypto trading bot - Build → Trade → Evaluate → Repeat",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "trade": "node src/trader.js",
+    "evaluate": "node src/evaluator.js",
+    "optimize": "node src/optimizer.js",
+    "report": "node src/report.js"
+  },
+  "dependencies": {
+    "ccxt": "^4.0.0"
+  }
+}
