@@ -2,9 +2,39 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
+const skillDir = '/root/.openclaw/workspace/skills/crypto-self-learning';
+
+// Log trade to self-learning skill
+function logToSelfLearning(trade, indicators = {}) {
+  try {
+    const symbol = trade.symbol.replace('/', '');
+    const direction = trade.type === 'long' ? 'LONG' : 'SHORT';
+    const result = trade.profit > 0 ? 'WIN' : 'LOSS';
+    const day = new Date().toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const hour = new Date().getHours();
+    
+    const cmd = `python3 ${skillDir}/scripts/log_trade.py \\
+      --symbol "${symbol}" \\
+      --direction "${direction}" \\
+      --entry ${trade.entryPrice} \\
+      --exit ${trade.exitPrice} \\
+      --pnl_percent ${trade.profitPercent.toFixed(2)} \\
+      --reason "${trade.reason || 'Auto trade'}" \\
+      --indicators '${JSON.stringify(indicators)}' \\
+      --market_context '{"day": "${day}", "hour": ${hour}}' \\
+      --result ${result} \\
+      --notes "${trade.closeReason || ''}"`;
+    
+    execSync(cmd, { stdio: 'pipe' });
+    console.log('🧠 Trade logged to self-learning system');
+  } catch (e) {
+    console.log('⚠️ Could not log to self-learning:', e.message);
+  }
+}
 
 export class PaperTrader {
   constructor(initialBalance = 10000) {
@@ -68,7 +98,7 @@ export class PaperTrader {
   }
 
   // Close a position
-  sell(positionId, price, reason) {
+  sell(positionId, price, reason, indicators = {}) {
     const posIndex = this.positions.findIndex(p => p.id === positionId);
     if (posIndex === -1) {
       return { success: false, reason: 'Position not found' };
@@ -94,6 +124,9 @@ export class PaperTrader {
     this.trades.push(trade);
     this.positions.splice(posIndex, 1);
     this.saveState();
+
+    // Log to self-learning system
+    logToSelfLearning(trade, indicators);
 
     const emoji = profit > 0 ? '🟢' : '🔴';
     console.log(`${emoji} SELL: ${position.amount.toFixed(6)} ${position.symbol} @ ${price.toFixed(2)} | P/L: ${profit.toFixed(2)} USDT (${profitPercent.toFixed(2)}%)`);
