@@ -254,6 +254,132 @@ const StrategyCard = ({ configRaw }: { configRaw: string }) => {
   );
 }
 
+const PriceChart = () => {
+  const [data, setData] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const load = async () => {
+      try {
+        const res = await fetch('/api/chart');
+        const json = await res.json();
+        if (json.data) setData(json.data);
+      } catch (e) { console.error(e); }
+    };
+    load();
+    const i = setInterval(load, 10000);
+    return () => clearInterval(i);
+  }, []);
+
+  if (!mounted || data.length < 5) return null;
+
+  const prices = data.map(d => d.price);
+  const ma5s = data.map(d => d.maFast);
+  const ma13s = data.map(d => d.maSlow);
+  
+  // Filter out nulls for min/max calc
+  const validPrices = prices.filter((n): n is number => typeof n === 'number');
+  const validMa5 = ma5s.filter((n): n is number => typeof n === 'number');
+  const validMa13 = ma13s.filter((n): n is number => typeof n === 'number');
+
+  const allValues = [...validPrices, ...validMa5, ...validMa13];
+  if (allValues.length === 0) return null;
+
+  const minPrice = Math.min(...allValues);
+  const maxPrice = Math.max(...allValues);
+  const priceRange = maxPrice - minPrice || 1;
+  
+  // SVG Dimensions
+  const width = 800;
+  const height = 300;
+  const padding = 0; 
+  // We'll use full width and overlay labels to save space or just standard padding
+  // Let's use slight padding for lines not to hit edge
+  
+  const getX = (i: number) => (i / (data.length - 1)) * width;
+  const getY = (val: number) => height - ((val - minPrice) / priceRange) * height;
+
+  // Lines
+  const pricePoints = data.map((d, i) => `${getX(i)},${getY(d.price)}`).join(' ');
+  const ma5Points = data.map((d, i) => d.maFast ? `${getX(i)},${getY(d.maFast)}` : null).filter(Boolean).join(' ');
+  const ma13Points = data.map((d, i) => d.maSlow ? `${getX(i)},${getY(d.maSlow)}` : null).filter(Boolean).join(' ');
+
+  // RSI
+  const rsiHeight = 80;
+  const rsiPoints = data.map((d, i) => {
+    if (d.rsi === null || d.rsi === undefined) return null;
+    // RSI 0-100. Invert Y.
+    const y = rsiHeight - (d.rsi / 100) * rsiHeight;
+    return `${getX(i)},${y}`; 
+  }).filter(Boolean).join(' ');
+
+  const currentPrice = data[data.length-1].price;
+  const currentRsi = data[data.length-1].rsi;
+
+  return (
+    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+            <h2 className="text-lg font-bold flex items-center gap-2">
+            📊 SOL/USDT Real-time
+            </h2>
+            <div className="flex gap-4 text-xs mt-1">
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-gray-200"></span> Price</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-yellow-400"></span> MA(5)</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400"></span> MA(13)</span>
+            </div>
+        </div>
+        <div className="text-right">
+           <div className="text-3xl font-mono font-bold text-white">${currentPrice.toFixed(2)}</div>
+           {currentRsi !== null && (
+               <div className={`text-sm font-mono font-bold ${currentRsi > 70 ? 'text-red-400' : currentRsi < 30 ? 'text-green-400' : 'text-purple-400'}`}>
+               RSI: {currentRsi.toFixed(1)}
+               </div>
+           )}
+        </div>
+      </div>
+      
+      {/* Price Chart */}
+      <div className="relative h-[300px] w-full bg-gray-900/50 rounded-lg overflow-hidden mb-1 border border-gray-800">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
+           {/* Grid lines */}
+           <line x1="0" y1={getY(minPrice + priceRange*0.25)} x2={width} y2={getY(minPrice + priceRange*0.25)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
+           <line x1="0" y1={getY(minPrice + priceRange*0.5)} x2={width} y2={getY(minPrice + priceRange*0.5)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
+           <line x1="0" y1={getY(minPrice + priceRange*0.75)} x2={width} y2={getY(minPrice + priceRange*0.75)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
+           
+           {/* MA Lines */}
+           <polyline points={ma13Points} fill="none" stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.8" />
+           <polyline points={ma5Points} fill="none" stroke="#facc15" strokeWidth="2" strokeOpacity="0.8" />
+           
+           {/* Price Line */}
+           <polyline points={pricePoints} fill="none" stroke="#e5e7eb" strokeWidth="2" />
+           
+           {/* Current Price Dot */}
+           <circle cx={getX(data.length-1)} cy={getY(currentPrice)} r="3" fill="#fff" />
+        </svg>
+        
+        {/* Y Axis Labels Overlay */}
+        <div className="absolute right-1 top-1 text-[10px] text-gray-500 bg-gray-900/80 px-1 rounded">{maxPrice.toFixed(2)}</div>
+        <div className="absolute right-1 bottom-1 text-[10px] text-gray-500 bg-gray-900/80 px-1 rounded">{minPrice.toFixed(2)}</div>
+      </div>
+
+      {/* RSI Chart */}
+      <div className="relative h-[80px] w-full bg-gray-900/30 rounded-lg overflow-hidden border border-gray-800">
+        <div className="absolute top-0.5 left-1 text-[9px] text-gray-500 font-bold">RSI (14)</div>
+        <svg viewBox={`0 0 ${width} ${rsiHeight}`} className="w-full h-full" preserveAspectRatio="none">
+           {/* Zones */}
+           <rect x="0" y={(1 - 70/100)*rsiHeight} width={width} height={(40/100)*rsiHeight} fill="rgba(192, 132, 252, 0.05)" />
+           <line x1="0" y1={(1 - 70/100)*rsiHeight} x2={width} y2={(1 - 70/100)*rsiHeight} stroke="#4b5563" strokeDasharray="2" strokeWidth="0.5" />
+           <line x1="0" y1={(1 - 30/100)*rsiHeight} x2={width} y2={(1 - 30/100)*rsiHeight} stroke="#4b5563" strokeDasharray="2" strokeWidth="0.5" />
+
+           <polyline points={rsiPoints} fill="none" stroke="#c084fc" strokeWidth="1.5" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<BotData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -344,6 +470,8 @@ export default function Dashboard() {
               <div className="text-xs text-gray-500">Open trades</div>
            </div>
         </div>
+
+        <PriceChart />
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
