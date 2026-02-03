@@ -27,18 +27,24 @@ function generateReport() {
   const balance = state.balance;
   const initialBalance = 10000; // From config
 
+  // Calculate margin locked in positions
+  const marginLocked = positions.reduce((sum, p) => sum + (p.cost || 0), 0);
+  const totalEquity = balance + marginLocked;
+
   // Calculate stats
   const wins = trades.filter(t => t.profit > 0);
   const losses = trades.filter(t => t.profit <= 0);
   const totalProfit = trades.reduce((sum, t) => sum + t.profit, 0);
   const winRate = trades.length > 0 ? (wins.length / trades.length * 100) : 0;
-  const roi = ((balance - initialBalance) / initialBalance * 100);
+  const roi = ((totalEquity - initialBalance) / initialBalance * 100);
 
   console.log('💰 ACCOUNT SUMMARY');
   console.log('-'.repeat(40));
   console.log(`Initial Balance:  ${initialBalance.toFixed(2)} USDT`);
-  console.log(`Current Balance:  ${balance.toFixed(2)} USDT`);
-  console.log(`Total P/L:        ${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)} USDT`);
+  console.log(`Available:        ${balance.toFixed(2)} USDT`);
+  console.log(`Margin Locked:    ${marginLocked.toFixed(2)} USDT (${positions.length} positions)`);
+  console.log(`Total Equity:     ${totalEquity.toFixed(2)} USDT`);
+  console.log(`Realized P/L:     ${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)} USDT`);
   console.log(`ROI:              ${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%`);
   console.log('');
 
@@ -95,6 +101,8 @@ function generateReport() {
 
   return {
     balance,
+    totalEquity,
+    marginLocked,
     totalProfit,
     winRate,
     roi,
