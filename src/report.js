@@ -2,6 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { TradeDB } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -14,27 +15,25 @@ function generateReport() {
   console.log(`Generated: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
   console.log('');
 
-  // Load state
-  const statePath = path.join(dataDir, 'paper_state.json');
-  if (!fs.existsSync(statePath)) {
+  // Load data from SQLite
+  const trades = TradeDB.getAllTrades().filter(t => t.closed_at !== null);
+  const positions = TradeDB.getPositions();
+  const balance = TradeDB.getBalance();
+  const initialBalance = 10000; // From config
+
+  if (trades.length === 0 && positions.length === 0) {
     console.log('❌ No trading data found. Bot may not have run yet.');
     return null;
   }
 
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-  const trades = state.trades || [];
-  const positions = state.positions || [];
-  const balance = state.balance;
-  const initialBalance = 10000; // From config
-
   // Calculate margin locked in positions
-  const marginLocked = positions.reduce((sum, p) => sum + (p.cost || 0), 0);
+  const marginLocked = positions.reduce((sum, p) => sum + (p.margin || 0), 0);
   const totalEquity = balance + marginLocked;
 
   // Calculate stats
-  const wins = trades.filter(t => t.profit > 0);
-  const losses = trades.filter(t => t.profit <= 0);
-  const totalProfit = trades.reduce((sum, t) => sum + t.profit, 0);
+  const wins = trades.filter(t => t.pnl > 0);
+  const losses = trades.filter(t => t.pnl <= 0);
+  const totalProfit = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
   const winRate = trades.length > 0 ? (wins.length / trades.length * 100) : 0;
   const roi = ((totalEquity - initialBalance) / initialBalance * 100);
 
@@ -57,17 +56,17 @@ function generateReport() {
   console.log('');
 
   if (trades.length > 0) {
-    const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.profit, 0) / wins.length : 0;
-    const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.profit, 0) / losses.length : 0;
-    const bestTrade = trades.reduce((best, t) => t.profit > best.profit ? t : best, trades[0]);
-    const worstTrade = trades.reduce((worst, t) => t.profit < worst.profit ? t : worst, trades[0]);
+    const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.pnl, 0) / wins.length : 0;
+    const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.pnl, 0) / losses.length : 0;
+    const bestTrade = trades.reduce((best, t) => t.pnl > best.pnl ? t : best, trades[0]);
+    const worstTrade = trades.reduce((worst, t) => t.pnl < worst.pnl ? t : worst, trades[0]);
 
     console.log('📊 TRADE ANALYSIS');
     console.log('-'.repeat(40));
     console.log(`Avg Win:          +${avgWin.toFixed(2)} USDT`);
     console.log(`Avg Loss:         ${avgLoss.toFixed(2)} USDT`);
-    console.log(`Best Trade:       +${bestTrade.profit.toFixed(2)} USDT (${bestTrade.profitPercent.toFixed(2)}%)`);
-    console.log(`Worst Trade:      ${worstTrade.profit.toFixed(2)} USDT (${worstTrade.profitPercent.toFixed(2)}%)`);
+    console.log(`Best Trade:       +${bestTrade.pnl.toFixed(2)} USDT (${bestTrade.pnl_percent.toFixed(2)}%)`);
+    console.log(`Worst Trade:      ${worstTrade.pnl.toFixed(2)} USDT (${worstTrade.pnl_percent.toFixed(2)}%)`);
     console.log('');
   }
 
@@ -77,9 +76,9 @@ function generateReport() {
     console.log('-'.repeat(40));
     const recentTrades = trades.slice(-5).reverse();
     for (const t of recentTrades) {
-      const emoji = t.profit > 0 ? '🟢' : '🔴';
-      const time = new Date(t.closeTime).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-      console.log(`${emoji} ${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)} USDT (${t.profitPercent.toFixed(1)}%) - ${time}`);
+      const emoji = t.pnl > 0 ? '🟢' : '🔴';
+      const time = new Date(t.closed_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+      console.log(`${emoji} ${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)} USDT (${t.pnl_percent.toFixed(1)}%) - ${time}`);
     }
     console.log('');
   }
@@ -89,8 +88,8 @@ function generateReport() {
     console.log('📦 OPEN POSITIONS');
     console.log('-'.repeat(40));
     for (const p of positions) {
-      const time = new Date(p.openTime).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-      console.log(`• ${p.symbol}: ${p.amount.toFixed(6)} @ ${p.entryPrice.toFixed(2)} USDT (${time})`);
+      const time = new Date(p.opened_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+      console.log(`• ${p.symbol}: ${p.amount.toFixed(6)} @ ${p.entry_price.toFixed(2)} USDT (${time})`);
     }
     console.log('');
   }

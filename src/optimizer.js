@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { analyzeLosses } from './loss-analyzer.js';
+import { TradeDB } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -14,15 +15,8 @@ function analyze() {
   console.log('='.repeat(60));
   console.log(`Time: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
   
-  // Load state
-  const statePath = path.join(dataDir, 'paper_state.json');
-  if (!fs.existsSync(statePath)) {
-    console.log('❌ No trading data found.');
-    return null;
-  }
-
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-  const trades = state.trades || [];
+  // Load trades from SQLite
+  const trades = TradeDB.getAllTrades().filter(t => t.closed_at !== null);
   
   if (trades.length < 3) {
     console.log('⏳ Not enough trades yet for optimization (need at least 3)');
@@ -30,9 +24,9 @@ function analyze() {
   }
 
   // Calculate current performance
-  const wins = trades.filter(t => t.profit > 0);
+  const wins = trades.filter(t => t.pnl > 0);
   const winRate = (wins.length / trades.length * 100);
-  const totalProfit = trades.reduce((sum, t) => sum + t.profit, 0);
+  const totalProfit = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
   console.log(`\n📊 Current Performance:`);
   console.log(`   Win Rate: ${winRate.toFixed(1)}%`);
@@ -41,7 +35,7 @@ function analyze() {
 
   // Analyze trade patterns
   const recentTrades = trades.slice(-10);
-  const recentWinRate = recentTrades.filter(t => t.profit > 0).length / recentTrades.length * 100;
+  const recentWinRate = recentTrades.filter(t => t.pnl > 0).length / recentTrades.length * 100;
   
   console.log(`\n📈 Recent Performance (Last 10):`);
   console.log(`   Win Rate: ${recentWinRate.toFixed(1)}%`);
