@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** Continue improving self-learning & pattern recognition
+> **📅 Next Task:** Monitor SHORT block impact & gather LONG-only data
 > 
-> **🕐 Last Updated:** 18:44 (3 Feb 2026)
+> **🕐 Last Updated:** 19:47 (3 Feb 2026)
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -48,7 +48,7 @@
 - [x] **Sync paper trades to self-learning skill for analysis** ✅ Auto-sync on optimization
 - [x] **Auto-generate and update learned rules in MEMORY.md** ✅ update-rules.js
 - [x] **Learn best leverage for current volatility** ✅ Dynamic leverage: high vol → 5x
-- [ ] Pattern recognition from losing trades (deeper analysis)
+- [x] **Pattern recognition from losing trades (deeper analysis)** ✅ Hard block: SHORT in sideways (3 Feb 2026)
 - [ ] Weekly strategy evolution report
 
 ## ✅ Completed
