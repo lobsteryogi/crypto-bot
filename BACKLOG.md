@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** Self-learning integration complete! Trades auto-sync, rules auto-update.
+> **📅 Next Task:** Continue improving self-learning & pattern recognition
 > 
-> **🕐 Last Updated:** 15:27 (3 Feb 2026)
+> **🕐 Last Updated:** 16:31 (3 Feb 2026)
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -16,6 +16,7 @@
 - [x] Correlation with BTC (trade SOL based on BTC momentum)
 - [x] Add more trading pairs (ETH, AVAX, etc.)
 - [x] Implement martingale/anti-martingale sizing
+- [x] **Dynamic leverage based on volatility** ✅ High vol → 5x, Normal → 10x, Low → 15x
 
 ## 🖥️ Frontend (Dashboard)
 - [x] Alert bar showing changelog (recent bot updates/changes)
@@ -46,7 +47,7 @@
 - [x] Learn best trading hours ✅ Hour optimizer implemented!
 - [x] **Sync paper trades to self-learning skill for analysis** ✅ Auto-sync on optimization
 - [x] **Auto-generate and update learned rules in MEMORY.md** ✅ update-rules.js
-- [ ] Learn best leverage for current volatility
+- [x] **Learn best leverage for current volatility** ✅ Dynamic leverage: high vol → 5x
 - [ ] Pattern recognition from losing trades (deeper analysis)
 - [ ] Weekly strategy evolution report
 
