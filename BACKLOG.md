@@ -42,7 +42,7 @@
 - [ ] Show SOL-specific sentiment (Twitter/X mentions)
 
 ## 🧠 Self-Learning
-- [ ] Auto-adjust RSI thresholds based on win rate
+- [x] Auto-adjust RSI thresholds based on win rate
 - [ ] Learn best trading hours
 - [ ] Learn best leverage for current volatility
 - [ ] Pattern recognition from losing trades

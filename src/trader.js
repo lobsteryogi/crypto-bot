@@ -21,10 +21,14 @@ const logsDir = path.join(__dirname, '..', 'logs');
 const exchange = new ccxt.binance({ enableRateLimit: true });
 
 // Initialize paper trader
-const trader = new PaperTrader(config.paperTrading.initialBalance, config.rsiOptimization);
+const trader = new PaperTrader(
+    config.paperTrading.initialBalance, 
+    config.trading.rsiOptimization,
+    config.trading.hourOptimization
+);
 
 // Initialize Martingale Sizer and sync state
-const martingaleSizer = new MartingaleSizer(config.martingale);
+const martingaleSizer = new MartingaleSizer(config.trading.martingale);
 martingaleSizer.setStreak(trader.getMartingaleStreak());
 
 // Helper to handle trade results
@@ -241,12 +245,21 @@ async function runTradingCycle(symbol) {
 
   // Check Time Filter
   const now = new Date();
-  const isAllowedTime = isTradeableHour(now, config.trading);
+  
+  // Get effective blocked hours (Static + Learned)
+  const staticBlockedHours = (config.trading.timeFilter && config.trading.timeFilter.blockedHours) || [];
+  const effectiveBlockedHours = trader.getEffectiveBlockedHours(staticBlockedHours);
+  
+  const isAllowedTime = isTradeableHour(now, config.trading, effectiveBlockedHours);
   const isAllowedDay = !isWeekend(now, config.trading);
   const isTimeRestricted = !isAllowedTime || !isAllowedDay;
 
   if (isTimeRestricted) {
-    log(`${logPrefix} ⏰ Trading restricted (low volume hour)`);
+    if (!isAllowedTime) {
+        log(`${logPrefix} ⏰ Trading restricted (Hour ${now.getUTCHours()} UTC is blocked). Blocked: [${effectiveBlockedHours.join(', ')}]`);
+    } else {
+        log(`${logPrefix} ⏰ Trading restricted (Weekend)`);
+    }
   }
 
   // Check BTC Correlation

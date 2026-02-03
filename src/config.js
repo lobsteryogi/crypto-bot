@@ -67,6 +67,14 @@ export const config = {
       avoidWeekends: false, // optional
     },
 
+    // Hour Optimization
+    hourOptimization: {
+      enabled: true,
+      minTradesPerHour: 3,
+      blockThreshold: 40, // Block hours with <40% win rate
+      optimizeEvery: 5,   // Check every 5 trades
+    },
+
     // BTC Correlation Filter
     btcCorrelation: {
       enabled: true,

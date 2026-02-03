@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { RsiOptimizer } from './rsi-optimizer.js';
+import { HourOptimizer } from './hour-optimizer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -38,7 +39,7 @@ function logToSelfLearning(trade, indicators = {}) {
 }
 
 export class PaperTrader {
-  constructor(initialBalance = 10000, rsiConfig = {}) {
+  constructor(initialBalance = 10000, rsiConfig = {}, hourOptConfig = {}) {
     this.balance = initialBalance;
     this.initialBalance = initialBalance;
     this.positions = []; // Open positions
@@ -55,7 +56,18 @@ export class PaperTrader {
     });
     this.optimizedParams = null; // Store optimized values { oversold, overbought }
 
+    // Hour Optimization
+    this.hourOptConfig = hourOptConfig;
+    this.hourOptimizer = new HourOptimizer();
+    this.learnedBlockedHours = []; // Hours learned to be bad
+
     this.loadState();
+    
+    // Run initial optimization if enabled and we have history
+    if (this.hourOptConfig && this.hourOptConfig.enabled && this.trades.length > 0) {
+        console.log('🔄 Running initial hour optimization on loaded trades...');
+        this.optimizeHours();
+    }
   }
 
   loadState() {
@@ -71,10 +83,14 @@ export class PaperTrader {
         this.pausedUntil = state.pausedUntil || null;
         this.martingaleStreak = state.martingaleStreak || 0;
         this.optimizedParams = state.optimizedParams || null;
+        this.learnedBlockedHours = state.learnedBlockedHours || [];
         
         console.log(`📂 Loaded state: Balance ${this.balance.toFixed(2)} USDT, ${this.positions.length} open positions, ${this.trades.length} trades`);
         if (this.optimizedParams) {
              console.log(`🎯 Loaded optimized RSI params: Oversold ${this.optimizedParams.oversold}, Overbought ${this.optimizedParams.overbought}`);
+        }
+        if (this.learnedBlockedHours.length > 0) {
+             console.log(`⏰ Loaded learned blocked hours: ${this.learnedBlockedHours.join(', ')} UTC`);
         }
       } catch (e) {
         console.log('⚠️ Could not load state, starting fresh');
@@ -93,6 +109,7 @@ export class PaperTrader {
       pausedUntil: this.pausedUntil,
       martingaleStreak: this.martingaleStreak,
       optimizedParams: this.optimizedParams,
+      learnedBlockedHours: this.learnedBlockedHours,
       lastUpdate: new Date().toISOString()
     };
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
@@ -248,6 +265,14 @@ export class PaperTrader {
         this.trades.length >= this.rsiOptimizationConfig.minTrades &&
         this.trades.length % this.rsiOptimizationConfig.optimizeEvery === 0) {
         this.optimizeRsi();
+    }
+    
+    // Trigger Hour Optimization check
+    if (this.hourOptConfig && 
+        this.hourOptConfig.enabled && 
+        this.trades.length >= 5 && // Require at least some trades globally
+        this.trades.length % (this.hourOptConfig.optimizeEvery || 5) === 0) {
+        this.optimizeHours();
     }
 
     // Log to self-learning system
@@ -466,5 +491,55 @@ export class PaperTrader {
 
   getOptimizedParams() {
     return this.optimizedParams;
+  }
+
+  // Hour Optimization Logic
+  optimizeHours() {
+    if (!this.hourOptimizer || !this.hourOptConfig) return;
+    
+    try {
+      const minTrades = this.hourOptConfig.minTradesPerHour || 3;
+      const blockThreshold = this.hourOptConfig.blockThreshold || 40;
+      
+      const analysis = this.hourOptimizer.analyzeTradesByHour(this.trades);
+      const badHours = this.hourOptimizer.getBadHours(this.trades, minTrades, blockThreshold);
+      const goodHours = this.hourOptimizer.getGoodHours(this.trades, minTrades, 60);
+
+      // Log interesting findings
+      for (const hour in analysis) {
+        const data = analysis[hour];
+        if (data.trades >= minTrades) {
+            // Only log if it's significant (good or bad)
+            if (data.winRate < blockThreshold) {
+                console.log(`⏰ Hour Optimization: Hour ${hour} UTC has poor win rate (${data.winRate}%, ${data.trades} trades)`);
+            } else if (data.winRate > 60) {
+                console.log(`⏰ Hour Optimization: Hour ${hour} UTC is strong (${data.winRate}%, ${data.trades} trades)`);
+            }
+        }
+      }
+
+      // Update state if different
+      const currentBad = JSON.stringify(this.learnedBlockedHours.sort());
+      const newBad = JSON.stringify(badHours.sort());
+      
+      if (currentBad !== newBad) {
+        this.learnedBlockedHours = badHours;
+        console.log(`⏰ Hour Optimization: Updated blocked hours to: ${this.learnedBlockedHours.join(', ')} UTC`);
+        this.saveState();
+      }
+      
+      if (goodHours.length > 0) {
+          console.log(`⏰ Best hours identified: ${goodHours.join(', ')} UTC`);
+      }
+
+    } catch (e) {
+      console.log(`⚠️ Hour optimization failed: ${e.message}`);
+    }
+  }
+
+  getEffectiveBlockedHours(staticBlockedHours = []) {
+    // Combine static config + learned hours, remove duplicates
+    const combined = [...new Set([...staticBlockedHours, ...this.learnedBlockedHours])];
+    return combined;
   }
 }

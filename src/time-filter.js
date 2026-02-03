@@ -1,11 +1,13 @@
-export function isTradeableHour(date = new Date(), config) {
+export function isTradeableHour(date = new Date(), config, explicitBlockedHours = null) {
     if (config && config.timeFilter && !config.timeFilter.enabled) {
         return true;
     }
 
     const hour = date.getUTCHours();
-    // Default blocked hours if not provided in config
-    const blockedHours = (config && config.timeFilter && config.timeFilter.blockedHours) || [21, 22, 23, 0];
+    
+    // Use explicit list if provided, otherwise fall back to config
+    const blockedHours = explicitBlockedHours || 
+                        ((config && config.timeFilter && config.timeFilter.blockedHours) || [21, 22, 23, 0]);
     
     return !blockedHours.includes(hour);
 }
