@@ -1,7 +1,7 @@
 // Configuration for the crypto trading bot
 export const config = {
   // Trading pair
-  symbol: 'BTC/USDT',
+  symbol: 'SOL/USDT',
   
   // Paper trading settings (simulated)
   paperTrading: {

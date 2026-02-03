@@ -106,14 +106,17 @@ export class PaperTrader {
     }
 
     const position = this.positions[posIndex];
-    const revenue = price * position.amount;
-    const profit = revenue - position.cost;
-    const profitPercent = (profit / position.cost) * 100;
+    const leverage = position.leverage || 1;
+    const notionalValue = position.entryPrice * position.amount; // Full position value
+    const exitValue = price * position.amount;
+    const pricePnL = exitValue - notionalValue; // Actual price P/L
+    const profit = pricePnL; // With leverage, you get the full price movement
+    const profitPercent = (profit / position.cost) * 100; // % based on margin used
 
     const trade = {
       ...position,
       exitPrice: price,
-      revenue,
+      revenue: position.cost + profit, // Return margin + profit
       profit,
       profitPercent,
       closeTime: new Date().toISOString(),
@@ -121,7 +124,7 @@ export class PaperTrader {
       duration: Date.now() - new Date(position.openTime).getTime(),
     };
 
-    this.balance += revenue;
+    this.balance += trade.revenue;
     this.trades.push(trade);
     this.positions.splice(posIndex, 1);
     this.saveState();
