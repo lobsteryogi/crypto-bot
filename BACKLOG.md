@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** Monitor SHORT block impact & gather LONG-only data
+> **📅 Next Task:** Monitor side-specific leverage impact (LONG 30% lower)
 > 
-> **🕐 Last Updated:** 19:47 (3 Feb 2026)
+> **🕐 Last Updated:** 23:45 (3 Feb 2026)
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -17,6 +17,7 @@
 - [x] Add more trading pairs (ETH, AVAX, etc.)
 - [x] Implement martingale/anti-martingale sizing
 - [x] **Dynamic leverage based on volatility** ✅ High vol → 5x, Normal → 10x, Low → 15x
+- [x] **Side-specific leverage (LONG 30% lower)** ✅ LONG 7x, SHORT 10x (3 Feb 2026)
 
 ## 🖥️ Frontend (Dashboard)
 - [x] Alert bar showing changelog (recent bot updates/changes)
@@ -50,6 +51,7 @@
 - [x] **Learn best leverage for current volatility** ✅ Dynamic leverage: high vol → 5x
 - [x] **Pattern recognition from losing trades (deeper analysis)** ✅ Hard block: SHORT in sideways (3 Feb 2026)
 - [x] **Weekly strategy evolution report** ✅ Tracks win rate trends & rule changes over time (3 Feb 2026)
+- [x] **Side-specific leverage based on loss magnitude** ✅ LONG -30% (3 Feb 2026)
 
 ## ✅ Completed
 - [x] Basic RSI + MA strategy
