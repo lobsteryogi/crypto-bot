@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** กำลังทำ Fear & Greed Index display...
+> **📅 Next Task:** กำลังทำ Trade Engine (Backend)...
 > 
-> **🕐 Last Updated:** 13:53
+> **🕐 Last Updated:** 14:05
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -27,17 +27,19 @@
 - [x] Win rate by day of week chart
 - [x] Profit/Loss curve over time
 - [x] Current strategy parameters display
-- [ ] Manual trade execution buttons
+- [x] Manual trade execution buttons
 - [ ] Alert/notification settings
 - [ ] Dark/light theme toggle
 - [ ] Mobile-responsive improvements
 - [ ] Position size calculator widget
+- [ ] Keyboard shortcuts (B=buy, S=sell, Esc=close modal)
 
 ## 📊 Sentiment Analysis
 - [x] Crypto sentiment analysis for traded coins (news, social, Fear & Greed Index)
 - [x] Integrate sentiment score into trading decisions
 - [ ] Alert on extreme sentiment shifts
-- [ ] Show Fear & Greed Index on dashboard
+- [x] Show Fear & Greed Index on dashboard
+- [ ] Show SOL-specific sentiment (Twitter/X mentions)
 
 ## 🧠 Self-Learning
 - [ ] Auto-adjust RSI thresholds based on win rate

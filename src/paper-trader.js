@@ -100,6 +100,35 @@ export class PaperTrader {
     return { success: true, position };
   }
 
+  // Open a new short position
+  short(symbol, price, amount, reason, leverage = 1) {
+    const cost = (price * amount) / leverage; // Actual margin required
+    if (cost > this.balance) {
+      return { success: false, reason: 'Insufficient balance' };
+    }
+
+    const position = {
+      id: Date.now().toString(),
+      symbol,
+      type: 'short',
+      entryPrice: price,
+      amount,
+      cost,
+      leverage,
+      reason,
+      openTime: new Date().toISOString(),
+      lowestPrice: price, // Track lowest price for trailing stop
+      trailingStopActive: false,
+    };
+
+    this.balance -= cost;
+    this.positions.push(position);
+    this.saveState();
+
+    console.log(`🔴 SHORT: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${cost.toFixed(2)} USDT)`);
+    return { success: true, position };
+  }
+
   // Close a position
   sell(positionId, price, reason, indicators = {}) {
     const posIndex = this.positions.findIndex(p => p.id === positionId);
@@ -109,10 +138,20 @@ export class PaperTrader {
 
     const position = this.positions[posIndex];
     const leverage = position.leverage || 1;
-    const notionalValue = position.entryPrice * position.amount; // Full position value
-    const exitValue = price * position.amount;
-    const pricePnL = exitValue - notionalValue; // Actual price P/L
-    const profit = pricePnL; // With leverage, you get the full price movement
+    const type = position.type || 'long';
+    
+    let profit;
+    if (type === 'long') {
+      const notionalValue = position.entryPrice * position.amount;
+      const exitValue = price * position.amount;
+      profit = exitValue - notionalValue;
+    } else {
+      // Short: Profit if price goes down (Entry - Exit)
+      const notionalValue = position.entryPrice * position.amount;
+      const exitValue = price * position.amount;
+      profit = notionalValue - exitValue;
+    }
+
     const profitPercent = (profit / position.cost) * 100; // % based on margin used
 
     const trade = {
@@ -134,8 +173,9 @@ export class PaperTrader {
     // Log to self-learning system
     logToSelfLearning(trade, indicators);
 
-    const emoji = profit > 0 ? '🟢' : '🔴';
-    console.log(`${emoji} SELL: ${position.amount.toFixed(6)} ${position.symbol} @ ${price.toFixed(2)} | P/L: ${profit.toFixed(2)} USDT (${profitPercent.toFixed(2)}%)`);
+    const emoji = profit > 0 ? '💰' : '💸';
+    const direction = type === 'long' ? 'LONG' : 'SHORT';
+    console.log(`${emoji} CLOSE ${direction}: ${position.amount.toFixed(6)} ${position.symbol} @ ${price.toFixed(2)} | P/L: ${profit.toFixed(2)} USDT (${profitPercent.toFixed(2)}%)`);
     return { success: true, trade };
   }
 
@@ -144,41 +184,88 @@ export class PaperTrader {
     const closedTrades = [];
     
     for (const position of [...this.positions]) {
-      const priceChange = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+      const type = position.type || 'long';
+      const leverage = position.leverage || 1;
       
-      // Update highest price for trailing stop
-      if (currentPrice > (position.highestPrice || position.entryPrice)) {
-        position.highestPrice = currentPrice;
-        this.saveState();
-      }
-      
-      // Check trailing stop first (if enabled and activated)
-      if (trailingStop && trailingStop.enabled) {
-        // Activate trailing stop when profit reaches activation threshold
-        if (!position.trailingStopActive && priceChange >= trailingStop.activationPercent) {
-          position.trailingStopActive = true;
-          console.log(`🎯 Trailing stop activated for ${position.symbol} at ${currentPrice.toFixed(2)} (profit: ${priceChange.toFixed(2)}%)`);
+      if (type === 'long') {
+        const priceChange = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+        
+        // Update highest price for trailing stop
+        if (currentPrice > (position.highestPrice || position.entryPrice)) {
+          position.highestPrice = currentPrice;
           this.saveState();
         }
         
-        // Check trailing stop trigger
-        if (position.trailingStopActive) {
-          const dropFromHigh = ((position.highestPrice - currentPrice) / position.highestPrice) * 100;
-          if (dropFromHigh >= trailingStop.trailingPercent) {
-            const result = this.sell(position.id, currentPrice, `Trailing stop triggered (dropped ${dropFromHigh.toFixed(2)}% from high ${position.highestPrice.toFixed(2)})`);
-            if (result.success) closedTrades.push(result.trade);
-            continue;
+        // Check trailing stop first (if enabled and activated)
+        if (trailingStop && trailingStop.enabled) {
+          // Activate trailing stop when profit reaches activation threshold
+          if (!position.trailingStopActive && priceChange >= trailingStop.activationPercent) {
+            position.trailingStopActive = true;
+            console.log(`🎯 Trailing stop activated for LONG ${position.symbol} at ${currentPrice.toFixed(2)} (profit: ${priceChange.toFixed(2)}%)`);
+            this.saveState();
+          }
+          
+          // Check trailing stop trigger
+          if (position.trailingStopActive) {
+            const dropFromHigh = ((position.highestPrice - currentPrice) / position.highestPrice) * 100;
+            if (dropFromHigh >= trailingStop.trailingPercent) {
+              const result = this.sell(position.id, currentPrice, `Trailing stop triggered (dropped ${dropFromHigh.toFixed(2)}% from high ${position.highestPrice.toFixed(2)})`);
+              if (result.success) closedTrades.push(result.trade);
+              continue;
+            }
           }
         }
-      }
-      
-      // Regular stop loss
-      if (priceChange <= -stopLossPercent) {
-        const result = this.sell(position.id, currentPrice, `Stop loss triggered (${priceChange.toFixed(2)}%)`);
-        if (result.success) closedTrades.push(result.trade);
-      } else if (priceChange >= takeProfitPercent) {
-        const result = this.sell(position.id, currentPrice, `Take profit triggered (${priceChange.toFixed(2)}%)`);
-        if (result.success) closedTrades.push(result.trade);
+        
+        // Regular stop loss
+        if (priceChange <= -stopLossPercent) {
+          const result = this.sell(position.id, currentPrice, `Stop loss triggered (${priceChange.toFixed(2)}%)`);
+          if (result.success) closedTrades.push(result.trade);
+        } else if (priceChange >= takeProfitPercent) {
+          const result = this.sell(position.id, currentPrice, `Take profit triggered (${priceChange.toFixed(2)}%)`);
+          if (result.success) closedTrades.push(result.trade);
+        }
+      } else {
+        // SHORT POSITION LOGIC
+        // For short, priceChange positive is LOSS, negative is PROFIT
+        const priceChange = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+        const profitPercent = -priceChange; // Invert for readability
+        
+        // Update lowest price for trailing stop (want to trail above the lowest price)
+        if (currentPrice < (position.lowestPrice || position.entryPrice)) {
+          position.lowestPrice = currentPrice;
+          this.saveState();
+        }
+
+        // Check trailing stop
+        if (trailingStop && trailingStop.enabled) {
+          // Activate when profit reaches threshold (price drops by %)
+          if (!position.trailingStopActive && profitPercent >= trailingStop.activationPercent) {
+            position.trailingStopActive = true;
+            console.log(`🎯 Trailing stop activated for SHORT ${position.symbol} at ${currentPrice.toFixed(2)} (profit: ${profitPercent.toFixed(2)}%)`);
+            this.saveState();
+          }
+
+          if (position.trailingStopActive) {
+            // Check if price rose from lowest point
+            const riseFromLow = ((currentPrice - position.lowestPrice) / position.lowestPrice) * 100;
+            if (riseFromLow >= trailingStop.trailingPercent) {
+              const result = this.sell(position.id, currentPrice, `Trailing stop triggered (rose ${riseFromLow.toFixed(2)}% from low ${position.lowestPrice.toFixed(2)})`);
+              if (result.success) closedTrades.push(result.trade);
+              continue;
+            }
+          }
+        }
+
+        // Stop Loss (Price Rises)
+        if (priceChange >= stopLossPercent) {
+          const result = this.sell(position.id, currentPrice, `Stop loss triggered (-${priceChange.toFixed(2)}%)`);
+          if (result.success) closedTrades.push(result.trade);
+        } 
+        // Take Profit (Price Drops)
+        else if (priceChange <= -takeProfitPercent) {
+          const result = this.sell(position.id, currentPrice, `Take profit triggered (+${Math.abs(priceChange).toFixed(2)}%)`);
+          if (result.success) closedTrades.push(result.trade);
+        }
       }
     }
     

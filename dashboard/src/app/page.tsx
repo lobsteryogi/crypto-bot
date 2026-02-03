@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import FearGreedGauge from '../components/FearGreedGauge';
 import { TradeHistoryTable } from '../components/TradeHistoryTable';
 import { TradingViewChart, ChartData } from '../components/TradingViewChart';
 import { WinRateByDayChart } from '../components/WinRateByDayChart';
+import { ManualTradePanel } from '../components/ManualTradePanel';
+import { AlertSettingsPanel, AlertSettings, defaultSettings } from '../components/AlertSettingsPanel';
+import { useNotifications } from '../hooks/useNotifications';
 
 // --- Types ---
 
@@ -317,6 +320,16 @@ export default function Dashboard() {
   const [data, setData] = useState<BotData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Alert State
+  const [isAlertSettingsOpen, setIsAlertSettingsOpen] = useState(false);
+  const [alertSettings, setAlertSettings] = useState<AlertSettings>(defaultSettings);
+  const { notify } = useNotifications();
+  
+  // Refs for tracking "already notified" state to prevent loops
+  const lastTradeIdRef = useRef<string | null>(null);
+  const notifiedWinRateDateRef = useRef<string | null>(null);
+  const notifiedDailyDateRef = useRef<string | null>(null);
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -353,7 +366,15 @@ export default function Dashboard() {
   // Initial load and filter changes
   useEffect(() => {
     fetchData(false);
-  }, [fetchData]); // fetchData depends on filters
+    
+    // Load alert settings
+    const saved = localStorage.getItem('cryptoBotAlertSettings');
+    if (saved) {
+      try {
+        setAlertSettings({ ...defaultSettings, ...JSON.parse(saved) });
+      } catch (e) { console.error(e); }
+    }
+  }, [fetchData]);
 
   // Background polling
   useEffect(() => {
@@ -362,6 +383,90 @@ export default function Dashboard() {
     }, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Alert Logic
+  useEffect(() => {
+    if (!data) return;
+
+    const currentPrice = data.recentCycles && data.recentCycles.length > 0 ? data.recentCycles[0].price : 0;
+    const today = new Date().toDateString();
+
+    // 1. Price Alerts
+    if (alertSettings.priceAlerts.length > 0 && currentPrice > 0) {
+      let settingsChanged = false;
+      const newAlerts = alertSettings.priceAlerts.map(alert => {
+        if (!alert.enabled) return alert;
+
+        const triggered = (alert.direction === 'above' && currentPrice >= alert.price) ||
+                          (alert.direction === 'below' && currentPrice <= alert.price);
+        
+        if (triggered) {
+          notify(`Price Alert: ${alert.direction} ${alert.price}`, {
+            body: `SOL price has reached ${currentPrice}`,
+            icon: '/favicon.ico'
+          });
+          settingsChanged = true;
+          return { ...alert, enabled: false }; // Disable after trigger
+        }
+        return alert;
+      });
+
+      if (settingsChanged) {
+        const newSettings = { ...alertSettings, priceAlerts: newAlerts };
+        setAlertSettings(newSettings);
+        localStorage.setItem('cryptoBotAlertSettings', JSON.stringify(newSettings));
+      }
+    }
+
+    // 2. Trade Alerts
+    if (alertSettings.tradeAlerts && data.trades.length > 0) {
+      // Find the most recent trade (trades are usually sorted, but let's be safe)
+      // Assuming API returns trades sorted or we can find the one with latest closeTime/openTime
+      // For simplicity, let's look at the first one if sorted desc, or just tracking the ID.
+      // Based on API behavior, usually index 0 is latest if desc.
+      // Let's assume data.trades contains *all* trades, we find the one with the latest timestamp.
+      
+      const latestTrade = data.trades.reduce((prev, current) => {
+        const prevTime = new Date(prev.closeTime || prev.openTime).getTime();
+        const currTime = new Date(current.closeTime || current.openTime).getTime();
+        return currTime > prevTime ? current : prev;
+      }, data.trades[0]);
+
+      if (latestTrade && lastTradeIdRef.current && latestTrade.id !== lastTradeIdRef.current) {
+        // New trade detected
+        const type = latestTrade.profit >= 0 ? 'Winning Trade 🟢' : 'Losing Trade 🔴';
+        notify(type, {
+          body: `${latestTrade.symbol}: ${latestTrade.type.toUpperCase()} P/L: ${latestTrade.profit.toFixed(2)}`,
+        });
+      }
+      if (latestTrade) {
+        lastTradeIdRef.current = latestTrade.id;
+      }
+    }
+
+    // 3. Win Rate Alerts
+    if (alertSettings.winRateAlerts && notifiedWinRateDateRef.current !== today) {
+      const currentWinRate = parseFloat(data.stats.winRate);
+      if (!isNaN(currentWinRate) && currentWinRate < alertSettings.winRateThreshold) {
+         notify(`Win Rate Warning ⚠️`, {
+           body: `Win rate has dropped to ${currentWinRate}% (Threshold: ${alertSettings.winRateThreshold}%)`
+         });
+         notifiedWinRateDateRef.current = today;
+      }
+    }
+
+    // 4. Daily Summary
+    if (alertSettings.dailySummary && notifiedDailyDateRef.current !== today) {
+      // We only want to trigger this maybe once a day, perhaps not immediately on load if it's the same day.
+      // Simple logic: if we haven't notified for 'today' yet, do it. 
+      // User might get it on page load every morning.
+      notify(`Daily Summary 📅`, {
+        body: `P/L: ${data.stats.totalProfit} | Win Rate: ${data.stats.winRate}% | Trades: ${data.stats.totalTrades}`
+      });
+      notifiedDailyDateRef.current = today;
+    }
+
+  }, [data, alertSettings, notify]);
 
   if (loading && !data) {
     return (
@@ -379,6 +484,12 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans pb-10">
+      <AlertSettingsPanel 
+        isOpen={isAlertSettingsOpen} 
+        onClose={() => setIsAlertSettingsOpen(false)}
+        onSettingsChange={setAlertSettings}
+        currentPrice={data.recentCycles && data.recentCycles.length > 0 ? data.recentCycles[0].price : 0}
+      />
       <AlertBar changelog={data.changelog} />
       
       <main className="p-6 max-w-7xl mx-auto">
@@ -394,11 +505,22 @@ export default function Dashboard() {
                Last Update: {data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'N/A'}
              </p>
           </div>
-          <div className="text-right hidden md:block">
-            <div className="text-3xl font-mono font-bold">${data.balance.toFixed(2)}</div>
-            <div className={`text-sm ${roiColor}`}>
-               ROI: {data.stats.roi}% (${data.stats.totalProfit})
-            </div>
+          <div className="flex items-center gap-6">
+             <div className="text-right hidden md:block">
+               <div className="text-3xl font-mono font-bold">${data.balance.toFixed(2)}</div>
+               <div className={`text-sm ${roiColor}`}>
+                  ROI: {data.stats.roi}% (${data.stats.totalProfit})
+               </div>
+             </div>
+             <button
+               onClick={() => setIsAlertSettingsOpen(true)}
+               className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2.5 rounded-lg border border-gray-700 transition-colors"
+               title="Alert Settings"
+             >
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+               </svg>
+             </button>
           </div>
         </div>
 
@@ -501,6 +623,11 @@ export default function Dashboard() {
 
           {/* Right Column: Backlog & Config */}
           <div className="space-y-6">
+             <ManualTradePanel 
+                currentPrice={data.recentCycles && data.recentCycles.length > 0 ? data.recentCycles[0].price : 0} 
+                onTradeExecuted={() => fetchData(false)}
+             />
+             
              <BacklogSection backlog={data.backlog} />
              
              {/* Recent Signals Log */}

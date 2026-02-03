@@ -39,7 +39,7 @@ export class Strategies {
     // Sell signal: RSI overbought AND fast MA crosses below slow MA
     if (currentRsi > rsiOverbought && maCrossDown) {
       return { 
-        signal: 'sell', 
+        signal: 'short', 
         reason: `RSI overbought (${currentRsi.toFixed(2)}) + MA bearish crossover`,
         confidence: Math.min(100, (currentRsi - rsiOverbought) * 3 + 50)
       };
@@ -56,7 +56,7 @@ export class Strategies {
     
     if (currentRsi > rsiOverbought) {
       return { 
-        signal: 'sell', 
+        signal: 'short', 
         reason: `RSI overbought (${currentRsi.toFixed(2)})`,
         confidence: Math.min(80, (currentRsi - rsiOverbought) * 2 + 30)
       };
