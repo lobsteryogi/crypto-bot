@@ -50,6 +50,12 @@ interface Position {
   openTime: string;
   reason: string;
   type: 'long' | 'short';
+  leverage?: number;
+  currentPrice?: number;
+  takeProfit?: number;
+  stopLoss?: number;
+  unrealizedPnL?: number;
+  unrealizedPnLPercent?: number;
 }
 
 interface Cycle {
@@ -71,6 +77,7 @@ interface BotData {
   initialBalance: number;
   trades: Trade[];
   positions: Position[];
+  totalUnrealizedPnL?: number;
   recentCycles?: Cycle[];
   winRateByDay?: DayStat[];
   stats: Stats;
@@ -88,19 +95,19 @@ const AlertBar = ({ changelog }: { changelog: string[] }) => {
   return (
     <div className="bg-blue-900/30 border-b border-blue-800">
       <div 
-        className="max-w-7xl mx-auto px-6 py-2 flex items-center justify-between cursor-pointer"
+        className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between cursor-pointer"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div className="flex items-center gap-2 text-sm text-blue-200">
-          <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded">NEW</span>
-          <span className="font-mono">{changelog[0]}</span>
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-200 flex-1 min-w-0">
+          <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded shrink-0">NEW</span>
+          <span className="font-mono truncate">{changelog[0]}</span>
         </div>
-        <div className="text-blue-400 text-xs hover:text-white transition-colors">
-          {isOpen ? '▲ Hide History' : '▼ Show History'}
+        <div className="text-blue-400 text-xs hover:text-white transition-colors shrink-0 ml-2">
+          {isOpen ? '▲' : '▼'}
         </div>
       </div>
       {isOpen && (
-        <div className="max-w-7xl mx-auto px-6 pb-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-4">
           <ul className="space-y-1 mt-2">
             {changelog.slice(1).map((log, i) => (
               <li key={i} className="text-xs text-blue-300 font-mono border-l-2 border-blue-700 pl-2">
@@ -148,8 +155,8 @@ const PLChart = ({ trades }: { trades: Trade[] }) => {
 
   return (
     <div className="w-full overflow-hidden">
-      <h3 className="text-sm font-semibold text-gray-400 mb-2">Profit/Loss Curve (Cumulative)</h3>
-      <div className="relative h-[160px] w-full bg-gray-900/50 rounded-lg p-2 overflow-x-auto">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-400 mb-2">P/L Curve</h3>
+      <div className="relative h-[120px] sm:h-[160px] w-full bg-gray-900/50 rounded-lg p-2 overflow-x-auto">
          <svg viewBox={`0 0 ${dataPoints.length * 4} ${height}`} className="h-full w-full min-w-full" preserveAspectRatio="none">
            {/* Zero line */}
            {min < 0 && max > 0 && (
@@ -195,15 +202,15 @@ const HourlyWinRateChart = ({ trades }: { trades: Trade[] }) => {
 
   return (
     <div className="w-full">
-       <h3 className="text-sm font-semibold text-gray-400 mb-2">Win Rate by Hour (0-23h)</h3>
-       <div className="h-[160px] bg-gray-900/50 rounded-lg p-2 flex items-end justify-between gap-0.5">
+       <h3 className="text-xs sm:text-sm font-semibold text-gray-400 mb-2">Win Rate by Hour</h3>
+       <div className="h-[120px] sm:h-[160px] bg-gray-900/50 rounded-lg p-2 flex items-end justify-between gap-0.5">
           {hourlyStats.map((stat) => (
             <div key={stat.hour} className="flex-1 flex flex-col items-center group relative">
                <div 
                  className={`w-full rounded-t-sm transition-all ${stat.total === 0 ? 'bg-gray-800' : stat.winRate >= 50 ? 'bg-green-500/60' : 'bg-red-500/60'}`}
                  style={{ height: `${stat.total === 0 ? 5 : Math.max(10, stat.winRate)}%` }}
                ></div>
-               <div className="text-[8px] text-gray-500 mt-1">{stat.hour}</div>
+               <div className="text-[6px] sm:text-[8px] text-gray-500 mt-1">{stat.hour}</div>
                
                {/* Tooltip */}
                {stat.total > 0 && (
@@ -223,13 +230,13 @@ const BacklogSection = ({ backlog }: { backlog: Backlog }) => {
 
   return (
     <div className="bg-gray-800 rounded-xl p-4 mt-6">
-      <h2 className="text-xl font-bold mb-4">🚀 Development Backlog</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <h2 className="text-lg sm:text-xl font-bold mb-4">🚀 Development Backlog</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         <div>
           <h3 className="text-sm font-semibold text-yellow-400 mb-2 uppercase tracking-wider">To Do</h3>
           <ul className="space-y-2">
             {backlog.todo.slice(0, 8).map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+              <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-gray-300">
                 <input type="checkbox" disabled className="mt-1 bg-gray-700 border-gray-600 rounded" />
                 <span>{item}</span>
               </li>
@@ -241,7 +248,7 @@ const BacklogSection = ({ backlog }: { backlog: Backlog }) => {
           <h3 className="text-sm font-semibold text-green-400 mb-2 uppercase tracking-wider">Completed</h3>
           <ul className="space-y-2">
             {backlog.done.slice(0, 8).map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-400 line-through">
+              <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-gray-400 line-through">
                 <input type="checkbox" checked disabled className="mt-1 bg-gray-700 border-gray-600 rounded accent-green-500" />
                 <span>{item}</span>
               </li>
@@ -259,13 +266,146 @@ const StrategyCard = ({ configRaw }: { configRaw: string }) => {
 
   return (
     <div className="bg-gray-800 rounded-xl p-4 mt-6">
-       <h2 className="text-xl font-bold mb-4">⚙️ Strategy Configuration</h2>
-       <pre className="bg-gray-900 rounded-lg p-4 text-xs font-mono text-green-300 overflow-x-auto max-h-64">
+       <h2 className="text-lg sm:text-xl font-bold mb-4">⚙️ Strategy Configuration</h2>
+       <pre className="bg-gray-900 rounded-lg p-3 sm:p-4 text-[10px] sm:text-xs font-mono text-green-300 overflow-x-auto max-h-64">
          {configRaw}
        </pre>
     </div>
   );
 }
+
+// Position Card for Mobile
+const PositionCard = ({ position }: { position: Position }) => {
+  const isLong = position.type === 'long';
+  const pnlColor = (position.unrealizedPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400';
+  
+  return (
+    <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
+      <div className="flex justify-between items-start">
+        <div>
+          <span className="font-bold text-white">{position.symbol}</span>
+          <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${isLong ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            {isLong ? 'LONG' : 'SHORT'} {position.leverage ? `${position.leverage}x` : ''}
+          </span>
+        </div>
+        <div className={`text-right ${pnlColor}`}>
+          <div className="font-bold">{(position.unrealizedPnL || 0) >= 0 ? '+' : ''}{(position.unrealizedPnL || 0).toFixed(2)}</div>
+          <div className="text-xs">{(position.unrealizedPnLPercent || 0) >= 0 ? '+' : ''}{(position.unrealizedPnLPercent || 0).toFixed(2)}%</div>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-gray-400">Entry:</span>
+          <span className="ml-1 text-white">${position.entryPrice?.toFixed(2)}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Current:</span>
+          <span className="ml-1 text-white">${position.currentPrice?.toFixed(2)}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">TP:</span>
+          <span className="ml-1 text-green-400">${position.takeProfit?.toFixed(2)}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">SL:</span>
+          <span className="ml-1 text-red-400">${position.stopLoss?.toFixed(2)}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Size:</span>
+          <span className="ml-1 text-white">{position.amount?.toFixed(4)}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Time:</span>
+          <span className="ml-1 text-gray-300">{new Date(position.openTime).toLocaleTimeString()}</span>
+        </div>
+      </div>
+      
+      <div className="text-xs text-gray-400 truncate" title={position.reason}>
+        {position.reason}
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Open Positions Section
+const OpenPositionsSection = ({ positions, totalUnrealizedPnL }: { positions: Position[]; totalUnrealizedPnL?: number }) => {
+  if (positions.length === 0) return null;
+  
+  const totalPnLColor = (totalUnrealizedPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400';
+  
+  return (
+    <div className="bg-gray-800 rounded-xl p-3 sm:p-4 border border-gray-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+          Open Positions ({positions.length})
+        </h2>
+        <div className={`text-sm sm:text-base font-bold ${totalPnLColor}`}>
+          Unrealized P/L: {(totalUnrealizedPnL || 0) >= 0 ? '+' : ''}${(totalUnrealizedPnL || 0).toFixed(2)}
+        </div>
+      </div>
+      
+      {/* Mobile: Cards */}
+      <div className="sm:hidden space-y-3">
+        {positions.map(p => (
+          <PositionCard key={p.id} position={p} />
+        ))}
+      </div>
+      
+      {/* Desktop: Table */}
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-sm text-left min-w-[800px]">
+          <thead className="text-xs text-gray-400 uppercase bg-gray-700/50">
+            <tr>
+              <th className="px-3 py-2">Symbol</th>
+              <th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2 text-right">Entry</th>
+              <th className="px-3 py-2 text-right">Current</th>
+              <th className="px-3 py-2 text-right">TP</th>
+              <th className="px-3 py-2 text-right">SL</th>
+              <th className="px-3 py-2 text-right">Size</th>
+              <th className="px-3 py-2 text-right">P/L ($)</th>
+              <th className="px-3 py-2 text-right">P/L (%)</th>
+              <th className="px-3 py-2">Reason</th>
+              <th className="px-3 py-2">Time</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {positions.map(p => {
+              const isLong = p.type === 'long';
+              const pnlColor = (p.unrealizedPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400';
+              
+              return (
+                <tr key={p.id} className="hover:bg-gray-700/30">
+                  <td className="px-3 py-2 font-semibold text-white">{p.symbol}</td>
+                  <td className="px-3 py-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${isLong ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {isLong ? 'LONG' : 'SHORT'} {p.leverage ? `${p.leverage}x` : ''}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">${p.entryPrice?.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-yellow-300">${p.currentPrice?.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-green-400">${p.takeProfit?.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-red-400">${p.stopLoss?.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right text-gray-300">{p.amount?.toFixed(4)}</td>
+                  <td className={`px-3 py-2 text-right font-bold ${pnlColor}`}>
+                    {(p.unrealizedPnL || 0) >= 0 ? '+' : ''}{(p.unrealizedPnL || 0).toFixed(2)}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-bold ${pnlColor}`}>
+                    {(p.unrealizedPnLPercent || 0) >= 0 ? '+' : ''}{(p.unrealizedPnLPercent || 0).toFixed(2)}%
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-400 max-w-[150px] truncate" title={p.reason}>{p.reason}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{new Date(p.openTime).toLocaleTimeString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 const ChartSection = () => {
   const [data, setData] = useState<ChartData[]>([]);
@@ -289,33 +429,44 @@ const ChartSection = () => {
   const currentRsi = data.length > 0 ? data[data.length - 1].rsi : null;
 
   return (
-    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
-      <div className="flex justify-between items-start mb-4">
+    <div className="bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-700 mb-6 sm:mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0 mb-4">
         <div>
-            <h2 className="text-lg font-bold flex items-center gap-2">
-            📊 {symbol} Real-time (1m Candles)
+            <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+            📊 {symbol} Real-time (1m)
             </h2>
-            <div className="flex gap-4 text-xs mt-1">
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500"></span> Up</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500"></span> Down</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-yellow-400"></span> MA(5)</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400"></span> MA(13)</span>
+            <div className="flex flex-wrap gap-2 sm:gap-4 text-[10px] sm:text-xs mt-1">
+                <span className="flex items-center gap-1"><span className="w-2 sm:w-3 h-0.5 bg-green-500"></span> Up</span>
+                <span className="flex items-center gap-1"><span className="w-2 sm:w-3 h-0.5 bg-red-500"></span> Down</span>
+                <span className="flex items-center gap-1"><span className="w-2 sm:w-3 h-0.5 bg-yellow-400"></span> MA(5)</span>
+                <span className="flex items-center gap-1"><span className="w-2 sm:w-3 h-0.5 bg-blue-400"></span> MA(13)</span>
             </div>
         </div>
         <div className="text-right">
-           <div className="text-3xl font-mono font-bold text-white">${currentPrice.toFixed(2)}</div>
+           <div className="text-2xl sm:text-3xl font-mono font-bold text-white">${currentPrice.toFixed(2)}</div>
            {currentRsi !== null && currentRsi !== undefined && (
-               <div className={`text-sm font-mono font-bold ${currentRsi > 70 ? 'text-red-400' : currentRsi < 30 ? 'text-green-400' : 'text-purple-400'}`}>
+               <div className={`text-xs sm:text-sm font-mono font-bold ${currentRsi > 70 ? 'text-red-400' : currentRsi < 30 ? 'text-green-400' : 'text-purple-400'}`}>
                RSI: {currentRsi.toFixed(1)}
                </div>
            )}
         </div>
       </div>
       
-      <TradingViewChart data={data} />
+      <div className="h-[200px] sm:h-auto">
+        <TradingViewChart data={data} />
+      </div>
     </div>
   );
 };
+
+// KPI Card Component
+const KPICard = ({ title, value, subtitle, valueClass = 'text-white' }: { title: string; value: string | number; subtitle?: string; valueClass?: string }) => (
+  <div className="bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-700">
+    <div className="text-gray-400 text-[10px] sm:text-xs uppercase">{title}</div>
+    <div className={`text-xl sm:text-2xl font-bold ${valueClass}`}>{value}</div>
+    {subtitle && <div className="text-[10px] sm:text-xs text-gray-500">{subtitle}</div>}
+  </div>
+);
 
 export default function Dashboard() {
   const [data, setData] = useState<BotData | null>(null);
@@ -422,12 +573,6 @@ export default function Dashboard() {
 
     // 2. Trade Alerts
     if (alertSettings.tradeAlerts && data.trades.length > 0) {
-      // Find the most recent trade (trades are usually sorted, but let's be safe)
-      // Assuming API returns trades sorted or we can find the one with latest closeTime/openTime
-      // For simplicity, let's look at the first one if sorted desc, or just tracking the ID.
-      // Based on API behavior, usually index 0 is latest if desc.
-      // Let's assume data.trades contains *all* trades, we find the one with the latest timestamp.
-      
       const latestTrade = data.trades.reduce((prev, current) => {
         const prevTime = new Date(prev.closeTime || prev.openTime).getTime();
         const currTime = new Date(current.closeTime || current.openTime).getTime();
@@ -459,9 +604,6 @@ export default function Dashboard() {
 
     // 4. Daily Summary
     if (alertSettings.dailySummary && notifiedDailyDateRef.current !== today) {
-      // We only want to trigger this maybe once a day, perhaps not immediately on load if it's the same day.
-      // Simple logic: if we haven't notified for 'today' yet, do it. 
-      // User might get it on page load every morning.
       notify(`Daily Summary 📅`, {
         body: `P/L: ${data.stats.totalProfit} | Win Rate: ${data.stats.winRate}% | Trades: ${data.stats.totalTrades}`
       });
@@ -473,12 +615,12 @@ export default function Dashboard() {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-2xl animate-pulse text-blue-400">🤖 Loading Dashboard...</div>
+        <div className="text-xl sm:text-2xl animate-pulse text-blue-400">🤖 Loading Dashboard...</div>
       </div>
     );
   }
 
-  if (error && !data) return <div className="text-red-500 p-10">Error: {error}</div>;
+  if (error && !data) return <div className="text-red-500 p-4 sm:p-10">Error: {error}</div>;
   if (!data) return null;
 
   const profitColor = parseFloat(data.stats.totalProfit) >= 0 ? "text-green-400" : "text-red-400";
@@ -494,125 +636,92 @@ export default function Dashboard() {
       />
       <AlertBar changelog={data.changelog} />
       
-      <main className="p-6 max-w-7xl mx-auto">
+      <main className="p-3 sm:p-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
           <div>
-             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+             <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
                Crypto Bot Dashboard
              </h1>
-             <p className="text-gray-400 text-sm mt-1">
+             <p className="text-gray-400 text-xs sm:text-sm mt-1">
                Status: <span className={data.status === 'running' ? 'text-green-400' : 'text-yellow-400'}>{data.status}</span>
                <span className="mx-2">•</span>
-               Last Update: {data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'N/A'}
+               Last: {data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'N/A'}
              </p>
           </div>
-          <div className="flex items-center gap-6">
-             <div className="text-right hidden md:block">
-               <div className="text-3xl font-mono font-bold">${data.balance.toFixed(2)}</div>
-               <div className={`text-sm ${roiColor}`}>
+          <div className="flex items-center gap-4 sm:gap-6">
+             <div className="text-right">
+               <div className="text-2xl sm:text-3xl font-mono font-bold">${data.balance.toFixed(2)}</div>
+               <div className={`text-xs sm:text-sm ${roiColor}`}>
                   ROI: {data.stats.roi}% (${data.stats.totalProfit})
                </div>
              </div>
              <button
                onClick={() => setIsAlertSettingsOpen(true)}
-               className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2.5 rounded-lg border border-gray-700 transition-colors"
+               className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2 sm:p-2.5 rounded-lg border border-gray-700 transition-colors touch-manipulation"
                title="Alert Settings"
              >
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                </svg>
              </button>
           </div>
         </div>
 
-        {/* KPI Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-           <div className="row-span-1 md:row-span-1">
+        {/* KPI Grid - Mobile optimized */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+           <div className="col-span-2 sm:col-span-1 row-span-1">
               <FearGreedGauge />
            </div>
-           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <div className="text-gray-400 text-xs uppercase">Win Rate (All)</div>
-              <div className="text-2xl font-bold text-white">{data.stats.winRate}%</div>
-              <div className="text-xs text-gray-500">{data.stats.wins}W - {data.stats.losses}L</div>
-           </div>
-           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <div className="text-gray-400 text-xs uppercase">Total Trades</div>
-              <div className="text-2xl font-bold text-white">{data.stats.totalTrades}</div>
-              <div className="text-xs text-gray-500">Avg {data.stats.avgProfit}</div>
-           </div>
-           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <div className="text-gray-400 text-xs uppercase">Total P/L</div>
-              <div className={`text-2xl font-bold ${profitColor}`}>{data.stats.totalProfit}</div>
-              <div className="text-xs text-gray-500">USDT</div>
-           </div>
-           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 md:hidden">
-              <div className="text-gray-400 text-xs uppercase">Balance</div>
-              <div className="text-2xl font-bold text-white">${data.balance.toFixed(2)}</div>
-           </div>
-           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <div className="text-gray-400 text-xs uppercase">Active Positions</div>
-              <div className="text-2xl font-bold text-blue-400">{data.positions.length}</div>
-              <div className="text-xs text-gray-500">Open trades</div>
-           </div>
+           <KPICard 
+             title="Win Rate" 
+             value={`${data.stats.winRate}%`} 
+             subtitle={`${data.stats.wins}W - ${data.stats.losses}L`}
+           />
+           <KPICard 
+             title="Total Trades" 
+             value={data.stats.totalTrades} 
+             subtitle={`Avg ${data.stats.avgProfit}`}
+           />
+           <KPICard 
+             title="Total P/L" 
+             value={data.stats.totalProfit} 
+             subtitle="USDT"
+             valueClass={profitColor}
+           />
+           <KPICard 
+             title="Active Positions" 
+             value={data.positions.length} 
+             subtitle="Open trades"
+             valueClass="text-blue-400"
+           />
         </div>
 
         <ChartSection />
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+        {/* Charts Row - Stack on mobile */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-700">
              <PLChart trades={data.trades} />
           </div>
-          <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+          <div className="bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-700">
              <HourlyWinRateChart trades={data.trades} />
           </div>
-          <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+          <div className="bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-700 sm:col-span-2 lg:col-span-1">
              <WinRateByDayChart data={data.winRateByDay || []} />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column: Trades & Signals */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             
-            {/* Active Positions */}
-            {data.positions.length > 0 && (
-              <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                  Open Positions
-                </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-gray-400 uppercase bg-gray-700/50">
-                      <tr>
-                        <th className="px-4 py-2">Symbol</th>
-                        <th className="px-4 py-2">Entry</th>
-                        <th className="px-4 py-2">Size</th>
-                        <th className="px-4 py-2">Reason</th>
-                        <th className="px-4 py-2">Time</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {data.positions.map(p => (
-                        <tr key={p.id} className="hover:bg-gray-700/30">
-                          <td className="px-4 py-3 font-semibold text-white">{p.symbol}</td>
-                          <td className="px-4 py-3">${p.entryPrice}</td>
-                          <td className="px-4 py-3 text-gray-300">{p.amount.toFixed(4)}</td>
-                          <td className="px-4 py-3 text-xs text-gray-400 max-w-[150px] truncate" title={p.reason}>{p.reason}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{new Date(p.openTime).toLocaleTimeString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {/* Active Positions - Enhanced */}
+            <OpenPositionsSection positions={data.positions} totalUnrealizedPnL={data.totalUnrealizedPnL} />
 
             {/* Trade History Table */}
-            <div className="h-[600px] flex flex-col">
-               <h2 className="text-lg font-bold mb-3">Trade History</h2>
+            <div className="h-[400px] sm:h-[600px] flex flex-col">
+               <h2 className="text-base sm:text-lg font-bold mb-3">Trade History</h2>
                <TradeHistoryTable 
                   trades={data.trades} 
                   filters={filters} 
@@ -624,15 +733,15 @@ export default function Dashboard() {
           </div>
 
           {/* Right Column: Backlog & Config */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
              
              <BacklogSection backlog={data.backlog} />
              
              {/* Recent Signals Log */}
              {data.recentCycles && data.recentCycles.length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                  <h2 className="text-lg font-bold mb-3">Signal Log</h2>
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                <div className="bg-gray-800 rounded-xl p-3 sm:p-4 border border-gray-700">
+                  <h2 className="text-base sm:text-lg font-bold mb-3">Signal Log</h2>
+                  <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                     {data.recentCycles.slice(0, 8).map((c, i) => (
                       <div key={i} className="text-xs border-l-2 border-gray-600 pl-2 py-1">
                          <div className="flex justify-between text-gray-400">

@@ -5,6 +5,40 @@ import { execSync } from 'child_process';
 
 export const dynamic = 'force-dynamic';
 
+// Fetch current prices from Binance
+async function getCurrentPrices(symbols: string[]): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  
+  try {
+    // Convert symbols to Binance format (SOL/USDT -> SOLUSDT)
+    const binanceSymbols = [...new Set(symbols.map(s => s.replace('/', '')))];
+    
+    if (binanceSymbols.length === 0) return prices;
+    
+    // Fetch all prices at once
+    const res = await fetch('https://api.binance.com/api/v3/ticker/price', {
+      next: { revalidate: 0 }
+    });
+    
+    if (res.ok) {
+      const allPrices = await res.json();
+      const priceMap = new Map<string, number>(allPrices.map((p: any) => [p.symbol, parseFloat(p.price)]));
+      
+      for (const symbol of symbols) {
+        const binanceSymbol = symbol.replace('/', '');
+        const price = priceMap.get(binanceSymbol);
+        if (price !== undefined) {
+          prices[symbol] = price;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch prices from Binance:', e);
+  }
+  
+  return prices;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -26,9 +60,65 @@ export async function GET(request: NextRequest) {
     }
 
     const trades = state.trades || [];
-    const positions = state.positions || [];
+    const rawPositions = state.positions || [];
     const balance = state.balance || 10000;
     const initialBalance = 10000;
+
+    // --- 1.1. Fetch current prices for open positions ---
+    const positionSymbols = rawPositions.map((p: any) => p.symbol);
+    const currentPrices = await getCurrentPrices(positionSymbols);
+    
+    // Enrich positions with current prices and P/L calculations
+    const positions = rawPositions.map((p: any) => {
+      const currentPrice = currentPrices[p.symbol] || p.entryPrice;
+      const isLong = p.type === 'long';
+      const isShort = p.type === 'short';
+      
+      // Calculate P/L
+      let unrealizedPnL = 0;
+      let unrealizedPnLPercent = 0;
+      
+      if (isLong) {
+        unrealizedPnL = (currentPrice - p.entryPrice) * p.amount;
+        unrealizedPnLPercent = ((currentPrice - p.entryPrice) / p.entryPrice) * 100;
+      } else if (isShort) {
+        unrealizedPnL = (p.entryPrice - currentPrice) * p.amount;
+        unrealizedPnLPercent = ((p.entryPrice - currentPrice) / p.entryPrice) * 100;
+      }
+      
+      // Apply leverage if exists
+      const leverage = p.leverage || 1;
+      unrealizedPnLPercent *= leverage;
+      
+      // Calculate TP/SL from entry price if not set
+      // Default: TP = +2% profit, SL = -1.5% loss (leveraged)
+      let takeProfit = p.takeProfit || p.take_profit || null;
+      let stopLoss = p.stopLoss || p.stop_loss || null;
+      
+      // If not set, estimate based on standard risk management
+      if (!takeProfit) {
+        const tpPercent = 0.02 / leverage; // 2% target / leverage
+        takeProfit = isLong 
+          ? p.entryPrice * (1 + tpPercent)
+          : p.entryPrice * (1 - tpPercent);
+      }
+      
+      if (!stopLoss) {
+        const slPercent = 0.015 / leverage; // 1.5% SL / leverage  
+        stopLoss = isLong
+          ? p.entryPrice * (1 - slPercent)
+          : p.entryPrice * (1 + slPercent);
+      }
+      
+      return {
+        ...p,
+        currentPrice,
+        takeProfit,
+        stopLoss,
+        unrealizedPnL,
+        unrealizedPnLPercent,
+      };
+    });
 
     // --- Global Stats (Unfiltered) ---
     const allWins = trades.filter((t: any) => t.profit > 0);
@@ -178,6 +268,9 @@ export async function GET(request: NextRequest) {
       configStr = "Config file not found";
     }
 
+    // Calculate total unrealized P/L
+    const totalUnrealizedPnL = positions.reduce((sum: number, p: any) => sum + (p.unrealizedPnL || 0), 0);
+
     return NextResponse.json({
       status: 'running',
       lastUpdate: state.lastUpdate,
@@ -186,6 +279,7 @@ export async function GET(request: NextRequest) {
       trades: filteredTrades,
       allTradesCount: trades.length, 
       positions,
+      totalUnrealizedPnL,
       winRateByDay,
       recentCycles,
       changelog,
