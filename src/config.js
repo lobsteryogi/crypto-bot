@@ -22,6 +22,15 @@ export const config = {
       activationPercent: 1.0, // Activate trailing stop when profit >= 1%
       trailingPercent: 0.5, // Trail 0.5% below highest price
     },
+    // Dynamic position sizing based on win rate
+    positionSizing: {
+      minMultiplier: 0.25,    // Min 25% of base size when losing
+      maxMultiplier: 2.0,     // Max 200% of base size when winning
+      baseWinRate: 50,        // Win rate for 1x multiplier
+      minTrades: 10,          // Minimum trades before adjusting
+      winRateWeight: 0.7,     // How much win rate affects sizing
+      streakWeight: 0.3,      // How much recent performance affects sizing
+    },
   },
   
   // Strategy settings - more aggressive for frequent trades

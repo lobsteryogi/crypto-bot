@@ -3,7 +3,7 @@
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
 - [x] Trailing stop loss
-- [ ] Dynamic position sizing based on win rate
+- [x] Dynamic position sizing based on win rate
 - [ ] Multi-timeframe analysis (1m + 5m + 15m)
 - [ ] Add SHORT positions (not just LONG)
 - [ ] Volatility-based TP/SL adjustment

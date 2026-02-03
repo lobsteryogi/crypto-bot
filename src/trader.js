@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { Strategies } from './strategies.js';
 import { PaperTrader } from './paper-trader.js';
 import { getSentiment } from './sentiment.js';
+import { PositionSizer } from './position-sizer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -72,6 +73,9 @@ async function runTradingCycle() {
     log(`📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
   }
   
+  // 2.5. Get current stats for position sizing
+  const stats = trader.getStats();
+  
   // 3. Get strategy signal
   const strategy = Strategies.getStrategy(config.strategy.name);
   let signal = strategy(candles, config.strategy.params);
@@ -96,10 +100,15 @@ async function runTradingCycle() {
     log(`⚠️ Sentiment fetch failed: ${sentimentError.message}`, 'warn');
   }
   
-  // 4. Execute signal with leverage
+  // 4. Execute signal with leverage + dynamic position sizing
   if (signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
     const leverage = config.trading.leverage || 1;
-    const effectiveAmount = (config.trading.tradeAmount * leverage) / currentPrice;
+    
+    // Calculate dynamic position size based on win rate
+    const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
+    log(`📏 Position Sizing: ${sizing.multiplier}x (${sizing.reason})`);
+    
+    const effectiveAmount = (sizing.amount * leverage) / currentPrice;
     trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } else if (signal.signal === 'sell' && trader.positions.length > 0) {
     // Close oldest position
@@ -108,9 +117,9 @@ async function runTradingCycle() {
     trader.sell(oldestPosition.id, currentPrice, signal.reason, indicators);
   }
   
-  // 5. Log stats
-  const stats = trader.getStats();
-  log(`💰 Balance: ${stats.balance} USDT | Win Rate: ${stats.winRate}% | Trades: ${stats.totalTrades} | P/L: ${stats.totalProfit} USDT`);
+  // 5. Log stats (refresh after any trades)
+  const finalStats = trader.getStats();
+  log(`💰 Balance: ${finalStats.balance} USDT | Win Rate: ${finalStats.winRate}% | Trades: ${finalStats.totalTrades} | P/L: ${finalStats.totalProfit} USDT`);
   
   // Save cycle log
   const cycleLog = {
@@ -123,14 +132,14 @@ async function runTradingCycle() {
       fearGreed: sentiment.fearGreed.value,
       newsScore: sentiment.newsScore.value
     } : null,
-    stats,
+    stats: finalStats,
     openPositions: trader.positions.length,
   };
   
   const cycleLogFile = path.join(logsDir, 'cycles.jsonl');
   fs.appendFileSync(cycleLogFile, JSON.stringify(cycleLog) + '\n');
   
-  return stats;
+  return finalStats;
 }
 
 // Main loop
