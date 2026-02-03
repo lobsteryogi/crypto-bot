@@ -129,6 +129,7 @@ async function runTradingCycle(symbol) {
   // 1.5. Calculate Volatility Adjustment
   let currentSlPercent = config.trading.stopLossPercent;
   let currentTpPercent = config.trading.takeProfitPercent;
+  let currentLeverage = config.trading.leverage || 1;
   let volatilityInfo = null;
 
   if (config.trading.volatilityAdjustment?.enabled && candles && candles.length > 0) {
@@ -163,13 +164,24 @@ async function runTradingCycle(symbol) {
           vaConfig.maxTpPercent
         );
 
+        // Adjust Leverage based on volatility
+        const leverageConfig = config.trading.leverageAdjustment || {};
+        currentLeverage = VolatilityAdjuster.adjustedLeverage(
+          config.trading.leverage || 10,
+          multiplier,
+          leverageConfig.minLeverage || 3,
+          leverageConfig.maxLeverage || 20,
+          leverageConfig.highVolThreshold || 1.5,
+          leverageConfig.lowVolThreshold || 0.8
+        );
+
         volatilityInfo = {
           currentATR: currentATR.toFixed(4),
           averageATR: averageATR.toFixed(4),
           multiplier: multiplier.toFixed(2)
         };
 
-        log(`${logPrefix} 📉 Volatility: ATR=${currentATR.toFixed(4)} (Multiplier: ${multiplier.toFixed(2)}x) → SL=${currentSlPercent.toFixed(2)}%, TP=${currentTpPercent.toFixed(2)}%`);
+        log(`${logPrefix} 📉 Volatility: ATR=${currentATR.toFixed(4)} (Multiplier: ${multiplier.toFixed(2)}x) → SL=${currentSlPercent.toFixed(2)}%, TP=${currentTpPercent.toFixed(2)}%, Leverage=${currentLeverage}x`);
       }
     }
   }
@@ -270,7 +282,8 @@ async function runTradingCycle(symbol) {
   const isBtcAllowed = btcCheck.allowed;
   
   // 4. Execute signal
-  const leverage = config.trading.leverage || 1;
+  // Use dynamic leverage calculated from volatility (if enabled)
+  const leverage = currentLeverage; // From volatility adjustment above
   const indicators = signal.indicators || {};
   
   // Filter positions for this symbol

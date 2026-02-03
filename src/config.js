@@ -51,6 +51,14 @@ export const config = {
       minTpPercent: 1.0,
       maxTpPercent: 5.0,
     },
+
+    // Leverage Adjustment based on Volatility
+    leverageAdjustment: {
+      minLeverage: 3,       // Minimum leverage in high volatility
+      maxLeverage: 20,      // Maximum leverage in low volatility
+      highVolThreshold: 1.5, // Volatility multiplier for "high" (reduce leverage)
+      lowVolThreshold: 0.8,  // Volatility multiplier for "low" (can increase leverage)
+    },
     
     // Drawdown protection - pause trading after X% loss
     drawdownProtection: {
