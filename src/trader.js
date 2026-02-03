@@ -13,6 +13,7 @@ import { Indicators } from './indicators.js';
 import { VolatilityAdjuster } from './volatility-adjuster.js';
 import { isTradeableHour, isWeekend } from './time-filter.js';
 import { getBtcMomentum, shouldTradeBasedOnBtc } from './btc-correlation.js';
+import { shouldTrade } from './risk-filter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -316,6 +317,25 @@ async function runTradingCycle(symbol) {
 
   // Execute Entry
   if (!isTimeRestricted && isBtcAllowed && signal.signal === 'buy' && openPositionsCount < maxPositions) {
+    // Check risk filter (loss pattern analysis)
+    const marketConditions = {
+      trend: signal.indicators?.trend_5m || 'sideways',
+      volatility: signal.indicators?.volatility || 'normal',
+      side: 'LONG',
+      rsi: signal.indicators?.rsi_1m
+    };
+    
+    const riskCheck = shouldTrade(marketConditions);
+    
+    if (!riskCheck.allowed) {
+      log(`${logPrefix} ⛔ RISK FILTER: ${riskCheck.reason}`);
+      return; // Block trade
+    }
+    
+    if (riskCheck.warnings && riskCheck.warnings.length > 0) {
+      log(`${logPrefix} ⚠️ RISK WARNING: ${riskCheck.warnings.join('; ')}`);
+    }
+    
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
     
@@ -338,6 +358,25 @@ async function runTradingCycle(symbol) {
     trader.buy(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } 
   else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && openPositionsCount < maxPositions) {
+    // Check risk filter (loss pattern analysis)
+    const marketConditions = {
+      trend: signal.indicators?.trend_5m || 'sideways',
+      volatility: signal.indicators?.volatility || 'normal',
+      side: 'SHORT',
+      rsi: signal.indicators?.rsi_1m
+    };
+    
+    const riskCheck = shouldTrade(marketConditions);
+    
+    if (!riskCheck.allowed) {
+      log(`${logPrefix} ⛔ RISK FILTER: ${riskCheck.reason}`);
+      return; // Block trade
+    }
+    
+    if (riskCheck.warnings && riskCheck.warnings.length > 0) {
+      log(`${logPrefix} ⚠️ RISK WARNING: ${riskCheck.warnings.join('; ')}`);
+    }
+    
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
     
     // Apply Martingale Sizing

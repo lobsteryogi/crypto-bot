@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
+import { analyzeLosses } from './loss-analyzer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -126,6 +127,10 @@ function analyze() {
 // Auto-apply safe suggestions
 function autoOptimize() {
   const result = analyze();
+  
+  // Run loss pattern analysis
+  console.log('');
+  analyzeLosses();
   
   // Sync to self-learning skill after every optimization (async, don't block)
   console.log('\n🧠 Syncing to self-learning skill...');

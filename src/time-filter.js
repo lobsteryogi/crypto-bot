@@ -1,3 +1,34 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function loadDangerousHours() {
+    try {
+        const patternsPath = path.join(__dirname, '../data/loss-patterns.json');
+        if (!fs.existsSync(patternsPath)) {
+            return [];
+        }
+        
+        const patterns = JSON.parse(fs.readFileSync(patternsPath, 'utf8'));
+        const byHour = patterns.patterns?.byHour || {};
+        
+        // หาชั่วโมงที่มี avg loss > 5 USDT และมีอย่างน้อย 2 trades
+        const dangerousHours = Object.entries(byHour)
+            .filter(([hour, data]) => {
+                const avgLoss = data.count > 0 ? data.totalLoss / data.count : 0;
+                return data.count >= 2 && avgLoss > 5;
+            })
+            .map(([hour]) => parseInt(hour));
+        
+        return dangerousHours;
+    } catch (error) {
+        console.warn('⚠️ Could not load loss patterns:', error.message);
+        return [];
+    }
+}
+
 export function isTradeableHour(date = new Date(), config, explicitBlockedHours = null) {
     if (config && config.timeFilter && !config.timeFilter.enabled) {
         return true;
@@ -5,11 +36,14 @@ export function isTradeableHour(date = new Date(), config, explicitBlockedHours 
 
     const hour = date.getUTCHours();
     
-    // Use explicit list if provided, otherwise fall back to config
-    const blockedHours = explicitBlockedHours || 
-                        ((config && config.timeFilter && config.timeFilter.blockedHours) || [21, 22, 23, 0]);
+    // Combine explicit blocked hours + dangerous hours from loss analysis
+    const baseBlockedHours = explicitBlockedHours || 
+                            ((config && config.timeFilter && config.timeFilter.blockedHours) || [21, 22, 23, 0]);
     
-    return !blockedHours.includes(hour);
+    const dangerousHours = loadDangerousHours();
+    const allBlockedHours = [...new Set([...baseBlockedHours, ...dangerousHours])];
+    
+    return !allBlockedHours.includes(hour);
 }
 
 export function isWeekend(date = new Date(), config) {
