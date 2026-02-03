@@ -31,6 +31,25 @@ export const config = {
       winRateWeight: 0.7,     // How much win rate affects sizing
       streakWeight: 0.3,      // How much recent performance affects sizing
     },
+    
+    // Volatility-based TP/SL Adjustment
+    volatilityAdjustment: {
+      enabled: true,
+      atrPeriod: 14,
+      avgAtrPeriod: 100, // Period to calculate "average" volatility (baseline)
+      minSlPercent: 0.5,
+      maxSlPercent: 3.0,
+      minTpPercent: 1.0,
+      maxTpPercent: 5.0,
+    },
+    
+    // Drawdown protection - pause trading after X% loss
+    drawdownProtection: {
+      enabled: true,
+      maxDrawdownPercent: 3, // Stop trading if down 3% from peak
+      pauseDurationMinutes: 60, // Pause for 1 hour
+      resetOnNewPeak: true, // Reset drawdown tracking when balance hits new high
+    },
   },
   
   // Strategy settings - multi-timeframe analysis

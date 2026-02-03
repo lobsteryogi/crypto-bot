@@ -9,8 +9,8 @@
 - [x] Trailing stop loss
 - [x] Dynamic position sizing based on win rate
 - [x] Multi-timeframe analysis (1m + 5m + 15m) ✅ Implemented v3!
-- [ ] Add SHORT positions (not just LONG)
-- [ ] Volatility-based TP/SL adjustment
+- [x] Add SHORT positions (not just LONG)
+- [x] Volatility-based TP/SL adjustment
 - [ ] Time-based trading (avoid low volume hours)
 - [ ] Correlation with BTC (trade SOL based on BTC momentum)
 - [ ] Add more trading pairs (ETH, AVAX, etc.)
@@ -28,7 +28,7 @@
 - [x] Profit/Loss curve over time
 - [x] Current strategy parameters display
 - [x] Manual trade execution buttons
-- [ ] Alert/notification settings
+- [x] Alert/notification settings
 - [ ] Dark/light theme toggle
 - [ ] Mobile-responsive improvements
 - [ ] Position size calculator widget

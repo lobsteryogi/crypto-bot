@@ -42,6 +42,9 @@ export class PaperTrader {
     this.initialBalance = initialBalance;
     this.positions = []; // Open positions
     this.trades = []; // Completed trades
+    this.peakBalance = initialBalance; // Track peak balance for drawdown
+    this.tradingPaused = false; // Drawdown protection flag
+    this.pausedUntil = null; // Timestamp when trading can resume
     this.loadState();
   }
 
@@ -53,6 +56,9 @@ export class PaperTrader {
         this.balance = state.balance;
         this.positions = state.positions || [];
         this.trades = state.trades || [];
+        this.peakBalance = state.peakBalance || this.balance;
+        this.tradingPaused = state.tradingPaused || false;
+        this.pausedUntil = state.pausedUntil || null;
         console.log(`📂 Loaded state: Balance ${this.balance.toFixed(2)} USDT, ${this.positions.length} open positions, ${this.trades.length} trades`);
       } catch (e) {
         console.log('⚠️ Could not load state, starting fresh');
@@ -66,6 +72,9 @@ export class PaperTrader {
       balance: this.balance,
       positions: this.positions,
       trades: this.trades,
+      peakBalance: this.peakBalance,
+      tradingPaused: this.tradingPaused,
+      pausedUntil: this.pausedUntil,
       lastUpdate: new Date().toISOString()
     };
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
@@ -73,6 +82,21 @@ export class PaperTrader {
 
   // Open a new position
   buy(symbol, price, amount, reason, leverage = 1) {
+    // Check if trading is paused
+    if (this.tradingPaused) {
+      if (this.pausedUntil && Date.now() < new Date(this.pausedUntil).getTime()) {
+        const remainingMinutes = Math.ceil((new Date(this.pausedUntil).getTime() - Date.now()) / 60000);
+        console.log(`⏸️ Trading paused due to drawdown protection. Resume in ${remainingMinutes} minutes.`);
+        return { success: false, reason: 'Trading paused due to drawdown' };
+      } else {
+        // Pause expired, resume trading
+        this.tradingPaused = false;
+        this.pausedUntil = null;
+        console.log(`▶️ Trading resumed after drawdown pause.`);
+        this.saveState();
+      }
+    }
+
     const cost = (price * amount) / leverage; // Actual margin required
     if (cost > this.balance) {
       return { success: false, reason: 'Insufficient balance' };
@@ -102,6 +126,21 @@ export class PaperTrader {
 
   // Open a new short position
   short(symbol, price, amount, reason, leverage = 1) {
+    // Check if trading is paused
+    if (this.tradingPaused) {
+      if (this.pausedUntil && Date.now() < new Date(this.pausedUntil).getTime()) {
+        const remainingMinutes = Math.ceil((new Date(this.pausedUntil).getTime() - Date.now()) / 60000);
+        console.log(`⏸️ Trading paused due to drawdown protection. Resume in ${remainingMinutes} minutes.`);
+        return { success: false, reason: 'Trading paused due to drawdown' };
+      } else {
+        // Pause expired, resume trading
+        this.tradingPaused = false;
+        this.pausedUntil = null;
+        console.log(`▶️ Trading resumed after drawdown pause.`);
+        this.saveState();
+      }
+    }
+
     const cost = (price * amount) / leverage; // Actual margin required
     if (cost > this.balance) {
       return { success: false, reason: 'Insufficient balance' };
@@ -166,6 +205,12 @@ export class PaperTrader {
     };
 
     this.balance += trade.revenue;
+    
+    // Update peak balance if we hit a new high
+    if (this.balance > this.peakBalance) {
+      this.peakBalance = this.balance;
+    }
+    
     this.trades.push(trade);
     this.positions.splice(posIndex, 1);
     this.saveState();
@@ -292,8 +337,60 @@ export class PaperTrader {
       totalProfit: totalProfit.toFixed(2),
       avgProfit: this.trades.length > 0 ? (totalProfit / this.trades.length).toFixed(2) : 0,
       balance: this.balance.toFixed(2),
+      peakBalance: this.peakBalance.toFixed(2),
       openPositions: this.positions.length,
       roi: ((this.balance - this.initialBalance) / this.initialBalance * 100).toFixed(2),
+      tradingPaused: this.tradingPaused,
+      pausedUntil: this.pausedUntil,
     };
+  }
+  
+  // Check and apply drawdown protection
+  checkDrawdownProtection(config) {
+    if (!config || !config.enabled) return { paused: false };
+    
+    // If trading is already paused, check if we should resume
+    if (this.tradingPaused) {
+      if (this.pausedUntil && Date.now() >= new Date(this.pausedUntil).getTime()) {
+        this.tradingPaused = false;
+        this.pausedUntil = null;
+        console.log(`▶️ Trading resumed after drawdown pause.`);
+        this.saveState();
+        return { paused: false, resumed: true };
+      }
+      return { paused: true, remainingMinutes: Math.ceil((new Date(this.pausedUntil).getTime() - Date.now()) / 60000) };
+    }
+    
+    // Reset peak on new high if configured
+    if (config.resetOnNewPeak && this.balance > this.peakBalance) {
+      this.peakBalance = this.balance;
+      this.saveState();
+    }
+    
+    // Calculate drawdown from peak
+    const drawdownPercent = ((this.peakBalance - this.balance) / this.peakBalance) * 100;
+    
+    // Check if we exceeded max drawdown
+    if (drawdownPercent >= config.maxDrawdownPercent) {
+      this.tradingPaused = true;
+      this.pausedUntil = new Date(Date.now() + config.pauseDurationMinutes * 60000).toISOString();
+      this.saveState();
+      
+      console.log(`🚨 DRAWDOWN PROTECTION TRIGGERED!`);
+      console.log(`   Peak Balance: ${this.peakBalance.toFixed(2)} USDT`);
+      console.log(`   Current Balance: ${this.balance.toFixed(2)} USDT`);
+      console.log(`   Drawdown: ${drawdownPercent.toFixed(2)}% (Max: ${config.maxDrawdownPercent}%)`);
+      console.log(`   Trading PAUSED for ${config.pauseDurationMinutes} minutes.`);
+      console.log(`   Resume at: ${new Date(this.pausedUntil).toLocaleString()}`);
+      
+      return { 
+        paused: true, 
+        triggered: true,
+        drawdownPercent: drawdownPercent.toFixed(2),
+        pauseDurationMinutes: config.pauseDurationMinutes
+      };
+    }
+    
+    return { paused: false, drawdownPercent: drawdownPercent.toFixed(2) };
   }
 }

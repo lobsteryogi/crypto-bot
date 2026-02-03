@@ -126,4 +126,31 @@ export class Indicators {
 
     return { upper, middle: sma, lower };
   }
+
+  // Average True Range (ATR)
+  static atr(candles, period = 14) {
+    if (!candles || candles.length < period + 1) {
+      return [];
+    }
+
+    const trueRanges = [];
+
+    // Calculate True Range for each candle (starting from index 1)
+    for (let i = 1; i < candles.length; i++) {
+      const high = candles[i].high;
+      const low = candles[i].low;
+      const prevClose = candles[i - 1].close;
+
+      const tr1 = high - low;
+      const tr2 = Math.abs(high - prevClose);
+      const tr3 = Math.abs(low - prevClose);
+
+      trueRanges.push(Math.max(tr1, tr2, tr3));
+    }
+
+    // ATR is the SMA of True Ranges
+    // Note: Standard ATR often uses a smoothed average (RMA), but SMA is acceptable for this scope 
+    // and consistent with the requirement "ATR = SMA of True Range"
+    return this.sma(trueRanges, period);
+  }
 }

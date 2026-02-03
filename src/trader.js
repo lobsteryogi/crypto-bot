@@ -8,6 +8,8 @@ import { Strategies } from './strategies.js';
 import { PaperTrader } from './paper-trader.js';
 import { getSentiment } from './sentiment.js';
 import { PositionSizer } from './position-sizer.js';
+import { Indicators } from './indicators.js';
+import { VolatilityAdjuster } from './volatility-adjuster.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -30,7 +32,7 @@ function log(message, type = 'info') {
 }
 
 // Fetch OHLCV candles for single timeframe
-async function fetchCandles(symbol, timeframe, limit = 100) {
+async function fetchCandles(symbol, timeframe, limit = 200) {
   try {
     const ohlcv = await exchange.fetchOHLCV(symbol, timeframe, undefined, limit);
     return ohlcv.map(c => ({
@@ -48,11 +50,11 @@ async function fetchCandles(symbol, timeframe, limit = 100) {
 }
 
 // Fetch candles for multiple timeframes (for multi-timeframe analysis)
-async function fetchMultiTimeframeCandles(symbol, timeframes = ['1m', '5m', '15m'], limits = { '1m': 100, '5m': 60, '15m': 60 }) {
+async function fetchMultiTimeframeCandles(symbol, timeframes = ['1m', '5m', '15m'], limits = { '1m': 200, '5m': 60, '15m': 60 }) {
   const results = {};
   
   for (const tf of timeframes) {
-    const limit = limits[tf] || 100;
+    const limit = limits[tf] || 200;
     const candles = await fetchCandles(symbol, tf, limit);
     if (!candles) {
       log(`Failed to fetch ${tf} candles`, 'warn');
@@ -97,18 +99,78 @@ async function runTradingCycle() {
   
   log(`📊 ${config.symbol} Current Price: ${currentPrice.toFixed(2)} USDT`);
   
+  // 1.5. Calculate Volatility Adjustment
+  let currentSlPercent = config.trading.stopLossPercent;
+  let currentTpPercent = config.trading.takeProfitPercent;
+  let volatilityInfo = null;
+
+  if (config.trading.volatilityAdjustment?.enabled && candles && candles.length > 0) {
+    const vaConfig = config.trading.volatilityAdjustment;
+    // Calculate ATR
+    const atrSeries = Indicators.atr(candles, vaConfig.atrPeriod);
+    
+    if (atrSeries.length > 0) {
+      const currentATR = atrSeries[atrSeries.length - 1];
+      
+      if (currentATR !== null && !isNaN(currentATR)) {
+        // Calculate Average ATR (Baseline)
+        // Use the last N periods to determine "average" volatility
+        const avgPeriod = vaConfig.avgAtrPeriod || 100;
+        const history = atrSeries.slice(-avgPeriod).filter(v => v !== null); 
+        const averageATR = history.reduce((sum, val) => sum + val, 0) / history.length;
+
+        // Calculate Multiplier
+        const multiplier = VolatilityAdjuster.calculateMultiplier(currentATR, averageATR);
+        
+        // Adjust TP/SL
+        currentSlPercent = VolatilityAdjuster.adjustedStopLoss(
+          config.trading.stopLossPercent,
+          multiplier,
+          vaConfig.minSlPercent,
+          vaConfig.maxSlPercent
+        );
+        
+        currentTpPercent = VolatilityAdjuster.adjustedTakeProfit(
+          config.trading.takeProfitPercent,
+          multiplier,
+          vaConfig.minTpPercent,
+          vaConfig.maxTpPercent
+        );
+
+        volatilityInfo = {
+          currentATR: currentATR.toFixed(4),
+          averageATR: averageATR.toFixed(4),
+          multiplier: multiplier.toFixed(2)
+        };
+
+        log(`📉 Volatility: ATR=${currentATR.toFixed(4)} (Avg=${averageATR.toFixed(4)}) → Multiplier: ${multiplier.toFixed(2)}x`);
+        log(`🛠️ Adjusted TP/SL: SL=${currentSlPercent}% (Base ${config.trading.stopLossPercent}%), TP=${currentTpPercent}% (Base ${config.trading.takeProfitPercent}%)`);
+      }
+    }
+  }
+
   // 2. Check stop loss / take profit / trailing stop for open positions
   const closedTrades = trader.checkPositions(
     currentPrice,
-    config.trading.stopLossPercent,
-    config.trading.takeProfitPercent,
+    currentSlPercent,
+    currentTpPercent,
     config.trading.trailingStop
   );
   if (closedTrades.length > 0) {
     log(`📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
   }
   
-  // 2.5. Get current stats for position sizing
+  // 2.5. Check drawdown protection
+  const drawdownStatus = trader.checkDrawdownProtection(config.trading.drawdownProtection);
+  if (drawdownStatus.triggered) {
+    log(`🚨 DRAWDOWN PROTECTION: Trading paused for ${drawdownStatus.pauseDurationMinutes} minutes (Drawdown: ${drawdownStatus.drawdownPercent}%)`);
+  } else if (drawdownStatus.paused) {
+    log(`⏸️ Trading paused (${drawdownStatus.remainingMinutes} minutes remaining)`);
+  } else if (drawdownStatus.resumed) {
+    log(`▶️ Trading resumed after drawdown pause`);
+  }
+  
+  // 2.6. Get current stats for position sizing
   const stats = trader.getStats();
   
   // 3. Get strategy signal (pass multi-candles or single candles based on strategy)
