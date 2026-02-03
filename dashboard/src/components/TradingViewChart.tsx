@@ -173,8 +173,15 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
   useEffect(() => {
     if (!data || data.length === 0) return;
 
+    // Filter out any null/undefined values in data
+    const validData = data.filter(d => 
+      d && d.time != null && d.open != null && d.high != null && d.low != null && d.close != null
+    );
+    
+    if (validData.length === 0) return;
+
     // Convert data to TradingView format
-    const candles = data.map(d => ({
+    const candles = validData.map(d => ({
       time: d.time as Time,
       open: d.open,
       high: d.high,
@@ -182,22 +189,24 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
       close: d.close,
     }));
 
-    const volumes = data.map(d => ({
-      time: d.time as Time,
-      value: d.volume,
-      color: d.close >= d.open ? '#22c55e80' : '#ef444480',
-    }));
+    const volumes = validData
+      .filter(d => d.volume != null)
+      .map(d => ({
+        time: d.time as Time,
+        value: d.volume,
+        color: d.close >= d.open ? '#22c55e80' : '#ef444480',
+      }));
 
-    const ma5Data = data
-        .filter(d => d.ma5 !== undefined && d.ma5 !== null)
+    const ma5Data = validData
+        .filter(d => d.ma5 != null)
         .map(d => ({ time: d.time as Time, value: d.ma5! }));
     
-    const ma13Data = data
-        .filter(d => d.ma13 !== undefined && d.ma13 !== null)
+    const ma13Data = validData
+        .filter(d => d.ma13 != null)
         .map(d => ({ time: d.time as Time, value: d.ma13! }));
 
-    const rsiData = data
-        .filter(d => d.rsi !== undefined && d.rsi !== null)
+    const rsiData = validData
+        .filter(d => d.rsi != null)
         .map(d => ({ time: d.time as Time, value: d.rsi! }));
 
     // Update Series

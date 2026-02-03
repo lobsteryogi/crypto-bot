@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** กำลังทำ Win rate by day of week chart...
+> **📅 Next Task:** กำลังทำ Fear & Greed Index display...
 > 
-> **🕐 Last Updated:** 13:49
+> **🕐 Last Updated:** 13:53
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -15,6 +15,7 @@
 - [ ] Correlation with BTC (trade SOL based on BTC momentum)
 - [ ] Add more trading pairs (ETH, AVAX, etc.)
 - [ ] Implement martingale/anti-martingale sizing
+- [ ] Drawdown protection (pause trading after X% loss)
 
 ## 🖥️ Frontend (Dashboard)
 - [x] Alert bar showing changelog (recent bot updates/changes)
@@ -23,7 +24,7 @@
 - [x] **Refactor chart to use TradingView lightweight-charts**
 - [x] Trade history table with filters
 - [x] Win rate by hour of day chart
-- [ ] Win rate by day of week chart
+- [x] Win rate by day of week chart
 - [x] Profit/Loss curve over time
 - [x] Current strategy parameters display
 - [ ] Manual trade execution buttons
