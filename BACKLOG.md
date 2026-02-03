@@ -1,5 +1,9 @@
 # Crypto Bot Feature Backlog
 
+> **📅 Next Task:** จะเริ่มทำต่อประมาณ **14:00** (3 ก.พ. 2026)
+> 
+> **🕐 Last Updated:** 13:28
+
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
 - [x] Trailing stop loss
@@ -13,14 +17,14 @@
 - [ ] Implement martingale/anti-martingale sizing
 
 ## 🖥️ Frontend (Dashboard)
-- [ ] Alert bar showing changelog (recent bot updates/changes)
-- [ ] Backlog section showing pending/completed items
+- [x] Alert bar showing changelog (recent bot updates/changes)
+- [x] Backlog section showing pending/completed items
 - [ ] Real-time price chart with indicators
 - [ ] Trade history table with filters
-- [ ] Win rate by hour of day chart
+- [x] Win rate by hour of day chart
 - [ ] Win rate by day of week chart
-- [ ] Profit/Loss curve over time
-- [ ] Current strategy parameters display
+- [x] Profit/Loss curve over time
+- [x] Current strategy parameters display
 - [ ] Manual trade execution buttons
 - [ ] Alert/notification settings
 - [ ] Dark/light theme toggle
