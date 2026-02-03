@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { Strategies } from './strategies.js';
-import { PaperTrader } from './paper-trader.js';
+import { PaperTrader } from './paper-trader-sqlite.js';
 import { getSentiment } from './sentiment.js';
 import { PositionSizer } from './position-sizer.js';
 import { MartingaleSizer } from './martingale-sizer.js';

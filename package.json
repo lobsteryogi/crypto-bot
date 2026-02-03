@@ -12,6 +12,7 @@
     "report": "node src/report.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "ccxt": "^4.0.0"
   }
 }
