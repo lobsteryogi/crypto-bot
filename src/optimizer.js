@@ -127,6 +127,20 @@ function analyze() {
 function autoOptimize() {
   const result = analyze();
   
+  // Sync to self-learning skill after every optimization (async, don't block)
+  console.log('\n🧠 Syncing to self-learning skill...');
+  import('child_process').then(({ spawn }) => {
+    const proc = spawn('node', ['src/sync-to-learning.js'], {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'ignore', // Run silently in background
+      detached: true
+    });
+    proc.unref();
+    console.log('   ✅ Sync started in background');
+  }).catch(error => {
+    console.log(`   ⚠️ Sync failed: ${error.message}`);
+  });
+  
   if (!result || !result.suggestions || result.suggestions.length === 0) {
     return;
   }
