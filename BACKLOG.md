@@ -14,8 +14,8 @@
 - [x] **Drawdown protection (pause trading after X% loss)** ✅ 3% max, 60min pause
 - [x] Time-based trading (avoid low volume hours)
 - [x] Correlation with BTC (trade SOL based on BTC momentum)
-- [ ] Add more trading pairs (ETH, AVAX, etc.)
-- [ ] Implement martingale/anti-martingale sizing
+- [x] Add more trading pairs (ETH, AVAX, etc.)
+- [x] Implement martingale/anti-martingale sizing
 
 ## 🖥️ Frontend (Dashboard)
 - [x] Alert bar showing changelog (recent bot updates/changes)

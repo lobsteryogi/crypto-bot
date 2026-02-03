@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import { RsiOptimizer } from './rsi-optimizer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -37,7 +38,7 @@ function logToSelfLearning(trade, indicators = {}) {
 }
 
 export class PaperTrader {
-  constructor(initialBalance = 10000) {
+  constructor(initialBalance = 10000, rsiConfig = {}) {
     this.balance = initialBalance;
     this.initialBalance = initialBalance;
     this.positions = []; // Open positions
@@ -45,6 +46,15 @@ export class PaperTrader {
     this.peakBalance = initialBalance; // Track peak balance for drawdown
     this.tradingPaused = false; // Drawdown protection flag
     this.pausedUntil = null; // Timestamp when trading can resume
+    this.martingaleStreak = 0; // Streak for Martingale/Anti-Martingale
+    
+    // RSI Optimization
+    this.rsiOptimizationConfig = rsiConfig;
+    this.rsiOptimizer = new RsiOptimizer({
+        minTradesPerBucket: 3 // Default, can be overridden if passed in config
+    });
+    this.optimizedParams = null; // Store optimized values { oversold, overbought }
+
     this.loadState();
   }
 
@@ -59,7 +69,13 @@ export class PaperTrader {
         this.peakBalance = state.peakBalance || this.balance;
         this.tradingPaused = state.tradingPaused || false;
         this.pausedUntil = state.pausedUntil || null;
+        this.martingaleStreak = state.martingaleStreak || 0;
+        this.optimizedParams = state.optimizedParams || null;
+        
         console.log(`📂 Loaded state: Balance ${this.balance.toFixed(2)} USDT, ${this.positions.length} open positions, ${this.trades.length} trades`);
+        if (this.optimizedParams) {
+             console.log(`🎯 Loaded optimized RSI params: Oversold ${this.optimizedParams.oversold}, Overbought ${this.optimizedParams.overbought}`);
+        }
       } catch (e) {
         console.log('⚠️ Could not load state, starting fresh');
       }
@@ -75,9 +91,20 @@ export class PaperTrader {
       peakBalance: this.peakBalance,
       tradingPaused: this.tradingPaused,
       pausedUntil: this.pausedUntil,
+      martingaleStreak: this.martingaleStreak,
+      optimizedParams: this.optimizedParams,
       lastUpdate: new Date().toISOString()
     };
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  }
+
+  setMartingaleStreak(streak) {
+    this.martingaleStreak = streak;
+    this.saveState();
+  }
+
+  getMartingaleStreak() {
+    return this.martingaleStreak || 0;
   }
 
   // Open a new position
@@ -214,6 +241,14 @@ export class PaperTrader {
     this.trades.push(trade);
     this.positions.splice(posIndex, 1);
     this.saveState();
+
+    // Trigger RSI Optimization check
+    if (this.rsiOptimizationConfig && 
+        this.rsiOptimizationConfig.enabled && 
+        this.trades.length >= this.rsiOptimizationConfig.minTrades &&
+        this.trades.length % this.rsiOptimizationConfig.optimizeEvery === 0) {
+        this.optimizeRsi();
+    }
 
     // Log to self-learning system
     logToSelfLearning(trade, indicators);
@@ -395,5 +430,41 @@ export class PaperTrader {
     }
     
     return { paused: false, drawdownPercent: drawdownPercent.toFixed(2) };
+  }
+
+  // RSI Optimization Logic
+  optimizeRsi() {
+    if (!this.rsiOptimizer || this.trades.length < this.rsiOptimizationConfig.minTrades) return;
+
+    try {
+        const optimal = this.rsiOptimizer.getOptimalThresholds(this.trades);
+        
+        // Check if values are different enough to update
+        // We only update if we have a valid result
+        if (optimal && optimal.oversold) {
+            const currentOversold = this.optimizedParams ? this.optimizedParams.oversold : 30; // Default 30
+            
+            // If significant change (e.g. diff > 2 or first time)
+            if (!this.optimizedParams || Math.abs(optimal.oversold - currentOversold) >= 2) {
+                const oldParams = this.optimizedParams ? {...this.optimizedParams} : { oversold: 30, overbought: 70 };
+                
+                this.optimizedParams = {
+                    oversold: optimal.oversold,
+                    overbought: optimal.overbought || 70,
+                    lastOptimization: new Date().toISOString(),
+                    tradeCountAtOptimization: this.trades.length
+                };
+                
+                console.log(`🎯 RSI Optimization: Adjusting oversold ${oldParams.oversold} -> ${this.optimizedParams.oversold}`);
+                this.saveState();
+            }
+        }
+    } catch (e) {
+        console.log(`⚠️ RSI Optimization failed: ${e.message}`);
+    }
+  }
+
+  getOptimizedParams() {
+    return this.optimizedParams;
   }
 }

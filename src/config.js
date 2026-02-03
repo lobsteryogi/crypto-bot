@@ -34,6 +34,13 @@ export const config = {
       streakWeight: 0.3,      // How much recent performance affects sizing
     },
     
+    // Martingale / Anti-Martingale Sizing
+    martingale: {
+      mode: 'anti-martingale', // 'martingale' | 'anti-martingale' | 'off'
+      multiplier: 1.5,
+      maxMultiplier: 3.0,
+    },
+    
     // Volatility-based TP/SL Adjustment
     volatilityAdjustment: {
       enabled: true,
@@ -64,6 +71,13 @@ export const config = {
     btcCorrelation: {
       enabled: true,
       strictMode: false, // if true, only trade when BTC aligns perfectly
+    },
+
+    // RSI Optimization
+    rsiOptimization: {
+      enabled: true,
+      minTrades: 15, // Reduced for faster feedback during dev
+      optimizeEvery: 5, // Re-optimize frequently for testing
     },
   },
   

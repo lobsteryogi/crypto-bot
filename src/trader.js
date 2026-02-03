@@ -8,6 +8,7 @@ import { Strategies } from './strategies.js';
 import { PaperTrader } from './paper-trader.js';
 import { getSentiment } from './sentiment.js';
 import { PositionSizer } from './position-sizer.js';
+import { MartingaleSizer } from './martingale-sizer.js';
 import { Indicators } from './indicators.js';
 import { VolatilityAdjuster } from './volatility-adjuster.js';
 import { isTradeableHour, isWeekend } from './time-filter.js';
@@ -20,7 +21,19 @@ const logsDir = path.join(__dirname, '..', 'logs');
 const exchange = new ccxt.binance({ enableRateLimit: true });
 
 // Initialize paper trader
-const trader = new PaperTrader(config.paperTrading.initialBalance);
+const trader = new PaperTrader(config.paperTrading.initialBalance, config.rsiOptimization);
+
+// Initialize Martingale Sizer and sync state
+const martingaleSizer = new MartingaleSizer(config.martingale);
+martingaleSizer.setStreak(trader.getMartingaleStreak());
+
+// Helper to handle trade results
+function processClosedTrade(trade) {
+  if (!trade) return;
+  const win = trade.profit > 0;
+  const newStreak = martingaleSizer.recordResult(win);
+  trader.setMartingaleStreak(newStreak);
+}
 
 // Log function
 function log(message, type = 'info') {
@@ -168,6 +181,10 @@ async function runTradingCycle(symbol) {
   );
   if (closedTrades.length > 0) {
     log(`${logPrefix} 📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
+    // Process results for Martingale
+    for (const trade of closedTrades) {
+      processClosedTrade(trade);
+    }
   }
   
   // 2.5. Check drawdown protection (Global check, but pauses everything)
@@ -186,11 +203,21 @@ async function runTradingCycle(symbol) {
   // 3. Get strategy signal
   const strategy = Strategies.getStrategy(config.strategy.name);
   let signal;
+
+  // Apply RSI Optimization if available
+  let strategyParams = { ...config.strategy.params };
+  if (trader.getOptimizedParams) {
+      const optimizedParams = trader.getOptimizedParams();
+      if (optimizedParams) {
+          if (optimizedParams.oversold) strategyParams.rsiOversold = optimizedParams.oversold;
+          if (optimizedParams.overbought) strategyParams.rsiOverbought = optimizedParams.overbought;
+      }
+  }
   
   if (isMultiTF) {
-    signal = strategy(multiCandles, config.strategy.params);
+    signal = strategy(multiCandles, strategyParams);
   } else {
-    signal = strategy(candles, config.strategy.params);
+    signal = strategy(candles, strategyParams);
   }
   
   log(`${logPrefix} 📈 Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
@@ -244,7 +271,8 @@ async function runTradingCycle(symbol) {
     if (shortPositions.length > 0) {
       log(`${logPrefix} 🔄 Switching direction: Closing ${shortPositions.length} SHORT position(s)`);
       for (const p of shortPositions) {
-        trader.sell(p.id, currentPrice, `Switch to LONG: ${signal.reason}`, indicators);
+        const result = trader.sell(p.id, currentPrice, `Switch to LONG: ${signal.reason}`, indicators);
+        if (result.success) processClosedTrade(result.trade);
       }
     }
   }
@@ -254,7 +282,8 @@ async function runTradingCycle(symbol) {
     if (longPositions.length > 0) {
       log(`${logPrefix} 🔄 Switching direction: Closing ${longPositions.length} LONG position(s)`);
       for (const p of longPositions) {
-        trader.sell(p.id, currentPrice, `Switch to SHORT: ${signal.reason}`, indicators);
+        const result = trader.sell(p.id, currentPrice, `Switch to SHORT: ${signal.reason}`, indicators);
+        if (result.success) processClosedTrade(result.trade);
       }
     }
   }
@@ -263,16 +292,44 @@ async function runTradingCycle(symbol) {
   if (!isTimeRestricted && isBtcAllowed && signal.signal === 'buy' && openPositionsCount < maxPositions) {
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
-    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (${sizing.reason})`);
     
-    const effectiveAmount = (sizing.amount * leverage) / currentPrice;
+    // Apply Martingale Sizing
+    const mResult = martingaleSizer.getPositionSize(sizing.amount);
+    const finalAmount = mResult.size;
+    const mStreak = mResult.streak;
+    const mMult = mResult.multiplier;
+    
+    // Log: "📈 Anti-Martingale: 2 win streak → 2.25x size"
+    if (config.martingale.mode !== 'off' && mStreak > 0) {
+       const modeLabel = config.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
+       const resultType = config.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
+       log(`📈 ${modeLabel}: ${mStreak} ${resultType} streak → ${mMult.toFixed(2)}x size`);
+    }
+
+    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (WinRate) * ${mMult.toFixed(2)}x (Martingale) = ${(sizing.multiplier * mMult).toFixed(2)}x Total`);
+    
+    const effectiveAmount = (finalAmount * leverage) / currentPrice;
     trader.buy(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } 
   else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && openPositionsCount < maxPositions) {
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
-    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (${sizing.reason})`);
     
-    const effectiveAmount = (sizing.amount * leverage) / currentPrice;
+    // Apply Martingale Sizing
+    const mResult = martingaleSizer.getPositionSize(sizing.amount);
+    const finalAmount = mResult.size;
+    const mStreak = mResult.streak;
+    const mMult = mResult.multiplier;
+
+    // Log: "📈 Anti-Martingale: 2 win streak → 2.25x size"
+    if (config.martingale.mode !== 'off' && mStreak > 0) {
+       const modeLabel = config.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
+       const resultType = config.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
+       log(`📈 ${modeLabel}: ${mStreak} ${resultType} streak → ${mMult.toFixed(2)}x size`);
+    }
+
+    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (WinRate) * ${mMult.toFixed(2)}x (Martingale) = ${(sizing.multiplier * mMult).toFixed(2)}x Total`);
+    
+    const effectiveAmount = (finalAmount * leverage) / currentPrice;
     trader.short(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   }
   
