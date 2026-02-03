@@ -1,8 +1,30 @@
-// Trading strategies
+/**
+ * Trading Strategies Module
+ * Provides various technical analysis strategies for trading signals.
+ * @module Strategies
+ */
 import { Indicators } from './indicators.js';
 
+/**
+ * @typedef {Object} TradingSignal
+ * @property {'buy'|'short'|'hold'} signal - Trading signal
+ * @property {string} reason - Human-readable reason for the signal
+ * @property {number} [confidence] - Confidence level (0-100)
+ * @property {Object} [indicators] - Raw indicator values
+ */
+
 export class Strategies {
-  // RSI + MA Crossover Strategy
+  /**
+   * RSI + MA Crossover Strategy
+   * @param {Object[]} candles - OHLCV candle data
+   * @param {Object} params - Strategy parameters
+   * @param {number} params.rsiPeriod - RSI period
+   * @param {number} params.rsiOversold - Oversold threshold
+   * @param {number} params.rsiOverbought - Overbought threshold
+   * @param {number} params.maFastPeriod - Fast MA period
+   * @param {number} params.maSlowPeriod - Slow MA period
+   * @returns {TradingSignal} Trading signal
+   */
   static rsiMaCrossover(candles, params) {
     const closes = candles.map(c => c.close);
     const { rsiPeriod, rsiOversold, rsiOverbought, maFastPeriod, maSlowPeriod } = params;
@@ -69,7 +91,12 @@ export class Strategies {
     };
   }
 
-  // Simple RSI Strategy (fallback)
+  /**
+   * Simple RSI Strategy (fallback)
+   * @param {Object[]} candles - OHLCV candle data
+   * @param {Object} params - Strategy parameters
+   * @returns {TradingSignal} Trading signal
+   */
   static simpleRsi(candles, params) {
     const closes = candles.map(c => c.close);
     const { rsiPeriod, rsiOversold, rsiOverbought } = params;
@@ -92,7 +119,12 @@ export class Strategies {
     return { signal: 'hold', reason: `RSI ${currentRsi.toFixed(2)} is neutral` };
   }
 
-  // MACD Strategy - Uses MACD crossovers with histogram confirmation
+  /**
+   * MACD Strategy - Uses MACD crossovers with histogram confirmation
+   * @param {Object[]} candles - OHLCV candle data
+   * @param {Object} params - Strategy parameters
+   * @returns {TradingSignal} Trading signal
+   */
   static macdStrategy(candles, params) {
     const closes = candles.map(c => c.close);
     const { 
