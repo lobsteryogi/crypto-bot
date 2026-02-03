@@ -49,7 +49,7 @@
 - [x] **Auto-generate and update learned rules in MEMORY.md** ✅ update-rules.js
 - [x] **Learn best leverage for current volatility** ✅ Dynamic leverage: high vol → 5x
 - [x] **Pattern recognition from losing trades (deeper analysis)** ✅ Hard block: SHORT in sideways (3 Feb 2026)
-- [ ] Weekly strategy evolution report
+- [x] **Weekly strategy evolution report** ✅ Tracks win rate trends & rule changes over time (3 Feb 2026)
 
 ## ✅ Completed
 - [x] Basic RSI + MA strategy

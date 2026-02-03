@@ -373,7 +373,8 @@ export default function Dashboard() {
         setAlertSettings({ ...defaultSettings, ...JSON.parse(saved) });
       } catch (e) { console.error(e); }
     }
-  }, [fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]); // Changed from [fetchData] to [filters]
 
   // Background polling
   useEffect(() => {
