@@ -5,7 +5,6 @@ import FearGreedGauge from '../components/FearGreedGauge';
 import { TradeHistoryTable } from '../components/TradeHistoryTable';
 import { TradingViewChart, ChartData } from '../components/TradingViewChart';
 import { WinRateByDayChart } from '../components/WinRateByDayChart';
-import { ManualTradePanel } from '../components/ManualTradePanel';
 import { AlertSettingsPanel, AlertSettings, defaultSettings } from '../components/AlertSettingsPanel';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -623,10 +622,6 @@ export default function Dashboard() {
 
           {/* Right Column: Backlog & Config */}
           <div className="space-y-6">
-             <ManualTradePanel 
-                currentPrice={data.recentCycles && data.recentCycles.length > 0 ? data.recentCycles[0].price : 0} 
-                onTradeExecuted={() => fetchData(false)}
-             />
              
              <BacklogSection backlog={data.backlog} />
              

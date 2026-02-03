@@ -10,6 +10,7 @@ import { getSentiment } from './sentiment.js';
 import { PositionSizer } from './position-sizer.js';
 import { Indicators } from './indicators.js';
 import { VolatilityAdjuster } from './volatility-adjuster.js';
+import { isTradeableHour, isWeekend } from './time-filter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -206,6 +207,16 @@ async function runTradingCycle() {
   } catch (sentimentError) {
     log(`⚠️ Sentiment fetch failed: ${sentimentError.message}`, 'warn');
   }
+
+  // Check Time Filter (New Entry Restriction)
+  const now = new Date();
+  const isAllowedTime = isTradeableHour(now, config.trading);
+  const isAllowedDay = !isWeekend(now, config.trading);
+  const isTimeRestricted = !isAllowedTime || !isAllowedDay;
+
+  if (isTimeRestricted) {
+    log(`⏰ Trading paused (low volume hour: ${now.getUTCHours()}:00 UTC)`);
+  }
   
   // 4. Execute signal with leverage + dynamic position sizing
   const leverage = config.trading.leverage || 1;
@@ -234,8 +245,8 @@ async function runTradingCycle() {
     }
   }
 
-  // Execute Entry
-  if (signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
+  // Execute Entry (Only if not time restricted)
+  if (!isTimeRestricted && signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
     // Check if we should add another position (avoid duplicate entries on same candle/signal usually handled by strategy state, but here we just check limit)
     
     // Calculate dynamic position size based on win rate
@@ -245,13 +256,16 @@ async function runTradingCycle() {
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
     trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } 
-  else if (signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
+  else if (!isTimeRestricted && signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
     log(`📏 Position Sizing (SHORT): ${sizing.multiplier}x (${sizing.reason})`);
     
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
     trader.short(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
+  }
+  else if (isTimeRestricted && (signal.signal === 'buy' || signal.signal === 'short')) {
+    log(`⛔ Signal ignored due to time restriction (${signal.signal.toUpperCase()})`);
   }
   
   // 5. Log stats (refresh after any trades)

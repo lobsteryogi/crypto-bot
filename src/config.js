@@ -50,6 +50,13 @@ export const config = {
       pauseDurationMinutes: 60, // Pause for 1 hour
       resetOnNewPeak: true, // Reset drawdown tracking when balance hits new high
     },
+    
+    // Time-based trading filter (avoid low volume hours)
+    timeFilter: {
+      enabled: true,
+      blockedHours: [21, 22, 23, 0], // UTC hours to avoid (21:00-01:00)
+      avoidWeekends: false, // optional
+    },
   },
   
   // Strategy settings - multi-timeframe analysis
