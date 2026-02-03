@@ -269,6 +269,7 @@ const StrategyCard = ({ configRaw }: { configRaw: string }) => {
 
 const ChartSection = () => {
   const [data, setData] = useState<ChartData[]>([]);
+  const [symbol, setSymbol] = useState('SOL/USDT');
   
   useEffect(() => {
     const load = async () => {
@@ -276,6 +277,7 @@ const ChartSection = () => {
         const res = await fetch('/api/chart');
         const json = await res.json();
         if (json.data) setData(json.data);
+        if (json.symbol) setSymbol(json.symbol);
       } catch (e) { console.error("Chart load error:", e); }
     };
     load();
@@ -291,7 +293,7 @@ const ChartSection = () => {
       <div className="flex justify-between items-start mb-4">
         <div>
             <h2 className="text-lg font-bold flex items-center gap-2">
-            📊 SOL/USDT Real-time (1m Candles)
+            📊 {symbol} Real-time (1m Candles)
             </h2>
             <div className="flex gap-4 text-xs mt-1">
                 <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500"></span> Up</span>

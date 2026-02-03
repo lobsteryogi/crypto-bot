@@ -6,10 +6,12 @@ export const dynamic = 'force-dynamic';
 
 interface RawLog {
   timestamp: string;
+  symbol?: string;
   price: number;
   signal?: {
     indicators?: {
       rsi?: number;
+      rsi1m?: number;
       maFast?: number;
       maSlow?: number;
     };
@@ -60,12 +62,17 @@ export async function GET() {
     
     // We need enough data to build candles and then MAs. 
     // Let's take last 2000 ticks to form minute candles.
+    // Filter for SOL/USDT only to avoid mixing prices from different symbols
     const rawData: RawLog[] = lines.slice(-2000).map(line => {
       try { return JSON.parse(line); } catch { return null; }
-    }).filter(Boolean);
+    }).filter((log): log is RawLog => {
+      if (!log) return false;
+      // Only include SOL/USDT data for the chart
+      return log.symbol === 'SOL/USDT';
+    });
 
     if (rawData.length === 0) {
-      return NextResponse.json({ data: [] });
+      return NextResponse.json({ data: [], symbol: 'SOL/USDT' });
     }
 
     // Group by minute
@@ -94,7 +101,10 @@ export async function GET() {
         c.close = log.price;
         c.volume += 1;
         // Update RSI from the latest tick in the candle if available
-        if (log.signal?.indicators?.rsi) {
+        // Use rsi1m (1-minute RSI) which is more accurate for this timeframe
+        if (log.signal?.indicators?.rsi1m) {
+            c.rsi = log.signal.indicators.rsi1m;
+        } else if (log.signal?.indicators?.rsi) {
             c.rsi = log.signal.indicators.rsi;
         } else if (log.signal?.reason) {
             // Fallback parse RSI from reason string if not in indicators
@@ -119,7 +129,8 @@ export async function GET() {
     }));
 
     return NextResponse.json({
-      data: chartData
+      data: chartData,
+      symbol: 'SOL/USDT'
     });
 
   } catch (error: any) {
