@@ -57,6 +57,12 @@ export const config = {
       blockedHours: [21, 22, 23, 0], // UTC hours to avoid (21:00-01:00)
       avoidWeekends: false, // optional
     },
+
+    // BTC Correlation Filter
+    btcCorrelation: {
+      enabled: true,
+      strictMode: false, // if true, only trade when BTC aligns perfectly
+    },
   },
   
   // Strategy settings - multi-timeframe analysis

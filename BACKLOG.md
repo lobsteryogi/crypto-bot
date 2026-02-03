@@ -12,7 +12,7 @@
 - [x] Add SHORT positions (not just LONG)
 - [x] Volatility-based TP/SL adjustment
 - [x] **Drawdown protection (pause trading after X% loss)** ✅ 3% max, 60min pause
-- [ ] Time-based trading (avoid low volume hours)
+- [x] Time-based trading (avoid low volume hours)
 - [ ] Correlation with BTC (trade SOL based on BTC momentum)
 - [ ] Add more trading pairs (ETH, AVAX, etc.)
 - [ ] Implement martingale/anti-martingale sizing

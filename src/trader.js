@@ -11,6 +11,7 @@ import { PositionSizer } from './position-sizer.js';
 import { Indicators } from './indicators.js';
 import { VolatilityAdjuster } from './volatility-adjuster.js';
 import { isTradeableHour, isWeekend } from './time-filter.js';
+import { getBtcMomentum, shouldTradeBasedOnBtc } from './btc-correlation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -99,6 +100,13 @@ async function runTradingCycle() {
   }
   
   log(`📊 ${config.symbol} Current Price: ${currentPrice.toFixed(2)} USDT`);
+
+  // 1.2 Fetch BTC Momentum
+  let btcMomentum = 'neutral';
+  if (config.trading.btcCorrelation && config.trading.btcCorrelation.enabled) {
+    btcMomentum = await getBtcMomentum(exchange);
+    log(`🔗 BTC Momentum: ${btcMomentum}`);
+  }
   
   // 1.5. Calculate Volatility Adjustment
   let currentSlPercent = config.trading.stopLossPercent;
@@ -217,6 +225,13 @@ async function runTradingCycle() {
   if (isTimeRestricted) {
     log(`⏰ Trading paused (low volume hour: ${now.getUTCHours()}:00 UTC)`);
   }
+
+  // Check BTC Correlation
+  const btcCheck = shouldTradeBasedOnBtc(btcMomentum, signal.signal);
+  if (!btcCheck.allowed && (signal.signal === 'buy' || signal.signal === 'short')) {
+     log(`⛔ BTC Correlation Block: ${btcCheck.reason}`);
+  }
+  const isBtcAllowed = btcCheck.allowed;
   
   // 4. Execute signal with leverage + dynamic position sizing
   const leverage = config.trading.leverage || 1;
@@ -246,7 +261,7 @@ async function runTradingCycle() {
   }
 
   // Execute Entry (Only if not time restricted)
-  if (!isTimeRestricted && signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
+  if (!isTimeRestricted && isBtcAllowed && signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
     // Check if we should add another position (avoid duplicate entries on same candle/signal usually handled by strategy state, but here we just check limit)
     
     // Calculate dynamic position size based on win rate
@@ -256,7 +271,7 @@ async function runTradingCycle() {
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
     trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } 
-  else if (!isTimeRestricted && signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
+  else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
     log(`📏 Position Sizing (SHORT): ${sizing.multiplier}x (${sizing.reason})`);
