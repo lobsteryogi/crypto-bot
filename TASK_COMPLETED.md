@@ -284,3 +284,30 @@ Future enhancements could include:
 **CLI tool:** `/root/.openclaw/workspace/crypto-bot/src/config-cli.js`
 
 The bot now has a robust, auditable, and user-friendly configuration system that enables runtime parameter adjustments without code modification! 🎉
+
+---
+
+## Update: PM2 Process Manager
+
+Bot now runs via **PM2** (not screen):
+
+**Status:**
+- ✅ Process: `crypto-bot` (PM2 managed)
+- ✅ Dashboard: `crypto-dashboard` (PM2 managed) 
+- ✅ Auto-restart enabled
+- ✅ Logs: `/root/.pm2/logs/crypto-bot-*.log`
+
+**Commands:**
+```bash
+pm2 list                    # View all processes
+pm2 restart crypto-bot      # Restart trading bot
+pm2 logs crypto-bot         # View live logs
+pm2 logs crypto-bot --err   # View errors only
+pm2 stop crypto-bot         # Stop bot
+pm2 start crypto-bot        # Start bot
+pm2 save                    # Save PM2 state
+```
+
+**Log Files:**
+- Trading logs: `/root/.openclaw/workspace/crypto-bot/logs/trading_YYYY-MM-DD.log`
+- PM2 logs: `/root/.pm2/logs/crypto-bot-out.log` & `crypto-bot-error.log`
