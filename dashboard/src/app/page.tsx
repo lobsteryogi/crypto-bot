@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import FearGreedGauge from '../components/FearGreedGauge';
 import { TradeHistoryTable } from '../components/TradeHistoryTable';
 import { TradingViewChart, ChartData } from '../components/TradingViewChart';
 import { WinRateByDayChart } from '../components/WinRateByDayChart';
@@ -402,7 +403,10 @@ export default function Dashboard() {
         </div>
 
         {/* KPI Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+           <div className="row-span-1 md:row-span-1">
+              <FearGreedGauge />
+           </div>
            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <div className="text-gray-400 text-xs uppercase">Win Rate (All)</div>
               <div className="text-2xl font-bold text-white">{data.stats.winRate}%</div>

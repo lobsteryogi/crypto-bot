@@ -146,8 +146,12 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
 
     // --- Synchronization (Basic) ---
     chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-        if (range && rsiChartInstance.current) {
-            rsiChartInstance.current.timeScale().setVisibleRange(range);
+        if (range && range.from && range.to && rsiChartInstance.current) {
+            try {
+                rsiChartInstance.current.timeScale().setVisibleRange(range);
+            } catch (e) {
+                // Ignore sync errors
+            }
         }
     });
 
