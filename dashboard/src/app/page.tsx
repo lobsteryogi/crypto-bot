@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { TradeHistoryTable } from '../components/TradeHistoryTable';
+import { TradingViewChart, ChartData } from '../components/TradingViewChart';
 
 // --- Types ---
 
@@ -21,8 +23,10 @@ interface Trade {
   exitPrice: number;
   profit: number;
   profitPercent: number;
+  openTime: string;
   closeTime: string;
   closeReason: string;
+  reason: string;
   type: 'long' | 'short';
 }
 
@@ -102,9 +106,8 @@ const PLChart = ({ trades }: { trades: Trade[] }) => {
   // Calculate cumulative P/L
   const dataPoints = useMemo(() => {
     let cumulative = 0;
-    // Trades come in reverse chronological order (newest first) from API for the list, 
-    // but for the chart we need oldest first.
-    const sortedTrades = [...trades].sort((a, b) => new Date(a.closeTime).getTime() - new Date(b.closeTime).getTime());
+    // Trades need to be sorted by date for the chart
+    const sortedTrades = [...trades].sort((a, b) => new Date(a.closeTime || a.openTime).getTime() - new Date(b.closeTime || b.openTime).getTime());
     
     const points = sortedTrades.map((t, i) => {
       cumulative += t.profit;
@@ -121,8 +124,7 @@ const PLChart = ({ trades }: { trades: Trade[] }) => {
   const max = Math.max(...dataPoints.map(p => p.value));
   const range = max - min || 1;
   const height = 150;
-  const width = 100; // percent
-
+  
   // Normalize points to SVG coordinates
   const pointsStr = dataPoints.map((p, i) => {
     const x = (i / (dataPoints.length - 1)) * 100 * 4; // Scale width roughly
@@ -166,7 +168,8 @@ const HourlyWinRateChart = ({ trades }: { trades: Trade[] }) => {
     const hours = Array(24).fill(0).map(() => ({ wins: 0, total: 0 }));
     
     trades.forEach(t => {
-      const hour = new Date(t.closeTime).getHours();
+      const time = t.closeTime || t.openTime;
+      const hour = new Date(time).getHours();
       hours[hour].total++;
       if (t.profit > 0) hours[hour].wins++;
     });
@@ -242,8 +245,6 @@ const BacklogSection = ({ backlog }: { backlog: Backlog }) => {
 const StrategyCard = ({ configRaw }: { configRaw: string }) => {
   if (!configRaw) return null;
 
-  // Simple clean up to show just the params part if possible, or render nicely
-  // We'll just render it in a scrollable code block
   return (
     <div className="bg-gray-800 rounded-xl p-4 mt-6">
        <h2 className="text-xl font-bold mb-4">⚙️ Strategy Configuration</h2>
@@ -254,85 +255,42 @@ const StrategyCard = ({ configRaw }: { configRaw: string }) => {
   );
 }
 
-const PriceChart = () => {
-  const [data, setData] = useState<any[]>([]);
-  const [mounted, setMounted] = useState(false);
-
+const ChartSection = () => {
+  const [data, setData] = useState<ChartData[]>([]);
+  
   useEffect(() => {
-    setMounted(true);
     const load = async () => {
       try {
         const res = await fetch('/api/chart');
         const json = await res.json();
         if (json.data) setData(json.data);
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error("Chart load error:", e); }
     };
     load();
     const i = setInterval(load, 10000);
     return () => clearInterval(i);
   }, []);
 
-  if (!mounted || data.length < 5) return null;
-
-  const prices = data.map(d => d.price);
-  const ma5s = data.map(d => d.maFast);
-  const ma13s = data.map(d => d.maSlow);
-  
-  // Filter out nulls for min/max calc
-  const validPrices = prices.filter((n): n is number => typeof n === 'number');
-  const validMa5 = ma5s.filter((n): n is number => typeof n === 'number');
-  const validMa13 = ma13s.filter((n): n is number => typeof n === 'number');
-
-  const allValues = [...validPrices, ...validMa5, ...validMa13];
-  if (allValues.length === 0) return null;
-
-  const minPrice = Math.min(...allValues);
-  const maxPrice = Math.max(...allValues);
-  const priceRange = maxPrice - minPrice || 1;
-  
-  // SVG Dimensions
-  const width = 800;
-  const height = 300;
-  const padding = 0; 
-  // We'll use full width and overlay labels to save space or just standard padding
-  // Let's use slight padding for lines not to hit edge
-  
-  const getX = (i: number) => (i / (data.length - 1)) * width;
-  const getY = (val: number) => height - ((val - minPrice) / priceRange) * height;
-
-  // Lines
-  const pricePoints = data.map((d, i) => `${getX(i)},${getY(d.price)}`).join(' ');
-  const ma5Points = data.map((d, i) => d.maFast ? `${getX(i)},${getY(d.maFast)}` : null).filter(Boolean).join(' ');
-  const ma13Points = data.map((d, i) => d.maSlow ? `${getX(i)},${getY(d.maSlow)}` : null).filter(Boolean).join(' ');
-
-  // RSI
-  const rsiHeight = 80;
-  const rsiPoints = data.map((d, i) => {
-    if (d.rsi === null || d.rsi === undefined) return null;
-    // RSI 0-100. Invert Y.
-    const y = rsiHeight - (d.rsi / 100) * rsiHeight;
-    return `${getX(i)},${y}`; 
-  }).filter(Boolean).join(' ');
-
-  const currentPrice = data[data.length-1].price;
-  const currentRsi = data[data.length-1].rsi;
+  const currentPrice = data.length > 0 ? data[data.length - 1].close : 0;
+  const currentRsi = data.length > 0 ? data[data.length - 1].rsi : null;
 
   return (
     <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
       <div className="flex justify-between items-start mb-4">
         <div>
             <h2 className="text-lg font-bold flex items-center gap-2">
-            📊 SOL/USDT Real-time
+            📊 SOL/USDT Real-time (1m Candles)
             </h2>
             <div className="flex gap-4 text-xs mt-1">
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-gray-200"></span> Price</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500"></span> Up</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500"></span> Down</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-yellow-400"></span> MA(5)</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400"></span> MA(13)</span>
             </div>
         </div>
         <div className="text-right">
            <div className="text-3xl font-mono font-bold text-white">${currentPrice.toFixed(2)}</div>
-           {currentRsi !== null && (
+           {currentRsi !== null && currentRsi !== undefined && (
                <div className={`text-sm font-mono font-bold ${currentRsi > 70 ? 'text-red-400' : currentRsi < 30 ? 'text-green-400' : 'text-purple-400'}`}>
                RSI: {currentRsi.toFixed(1)}
                </div>
@@ -340,71 +298,62 @@ const PriceChart = () => {
         </div>
       </div>
       
-      {/* Price Chart */}
-      <div className="relative h-[300px] w-full bg-gray-900/50 rounded-lg overflow-hidden mb-1 border border-gray-800">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
-           {/* Grid lines */}
-           <line x1="0" y1={getY(minPrice + priceRange*0.25)} x2={width} y2={getY(minPrice + priceRange*0.25)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
-           <line x1="0" y1={getY(minPrice + priceRange*0.5)} x2={width} y2={getY(minPrice + priceRange*0.5)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
-           <line x1="0" y1={getY(minPrice + priceRange*0.75)} x2={width} y2={getY(minPrice + priceRange*0.75)} stroke="#374151" strokeDasharray="4" opacity="0.5" />
-           
-           {/* MA Lines */}
-           <polyline points={ma13Points} fill="none" stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.8" />
-           <polyline points={ma5Points} fill="none" stroke="#facc15" strokeWidth="2" strokeOpacity="0.8" />
-           
-           {/* Price Line */}
-           <polyline points={pricePoints} fill="none" stroke="#e5e7eb" strokeWidth="2" />
-           
-           {/* Current Price Dot */}
-           <circle cx={getX(data.length-1)} cy={getY(currentPrice)} r="3" fill="#fff" />
-        </svg>
-        
-        {/* Y Axis Labels Overlay */}
-        <div className="absolute right-1 top-1 text-[10px] text-gray-500 bg-gray-900/80 px-1 rounded">{maxPrice.toFixed(2)}</div>
-        <div className="absolute right-1 bottom-1 text-[10px] text-gray-500 bg-gray-900/80 px-1 rounded">{minPrice.toFixed(2)}</div>
-      </div>
-
-      {/* RSI Chart */}
-      <div className="relative h-[80px] w-full bg-gray-900/30 rounded-lg overflow-hidden border border-gray-800">
-        <div className="absolute top-0.5 left-1 text-[9px] text-gray-500 font-bold">RSI (14)</div>
-        <svg viewBox={`0 0 ${width} ${rsiHeight}`} className="w-full h-full" preserveAspectRatio="none">
-           {/* Zones */}
-           <rect x="0" y={(1 - 70/100)*rsiHeight} width={width} height={(40/100)*rsiHeight} fill="rgba(192, 132, 252, 0.05)" />
-           <line x1="0" y1={(1 - 70/100)*rsiHeight} x2={width} y2={(1 - 70/100)*rsiHeight} stroke="#4b5563" strokeDasharray="2" strokeWidth="0.5" />
-           <line x1="0" y1={(1 - 30/100)*rsiHeight} x2={width} y2={(1 - 30/100)*rsiHeight} stroke="#4b5563" strokeDasharray="2" strokeWidth="0.5" />
-
-           <polyline points={rsiPoints} fill="none" stroke="#c084fc" strokeWidth="1.5" />
-        </svg>
-      </div>
+      <TradingViewChart data={data} />
     </div>
   );
-}
+};
 
 export default function Dashboard() {
   const [data, setData] = useState<BotData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  // Filter state
+  const [filters, setFilters] = useState({
+    range: 'all',
+    status: 'all',
+    minProfit: '',
+    maxProfit: '',
+    sortBy: 'closeTime',
+    sortOrder: 'desc' as 'asc' | 'desc'
+  });
+
+  const fetchData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
-      const res = await fetch("/api/stats");
+      const params = new URLSearchParams();
+      params.append('range', filters.range);
+      params.append('status', filters.status);
+      if (filters.minProfit) params.append('minProfit', filters.minProfit);
+      if (filters.maxProfit) params.append('maxProfit', filters.maxProfit);
+      params.append('sortBy', filters.sortBy);
+      params.append('sortOrder', filters.sortOrder);
+
+      const res = await fetch(`/api/stats?${params.toString()}`);
       const json = await res.json();
       setData(json);
       setError(null);
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
-  };
+  }, [filters]);
 
+  // Initial load and filter changes
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    fetchData(false);
+  }, [fetchData]); // fetchData depends on filters
 
-  if (loading) {
+  // Background polling
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
         <div className="text-2xl animate-pulse text-blue-400">🤖 Loading Dashboard...</div>
@@ -412,7 +361,7 @@ export default function Dashboard() {
     );
   }
 
-  if (error) return <div className="text-red-500 p-10">Error: {error}</div>;
+  if (error && !data) return <div className="text-red-500 p-10">Error: {error}</div>;
   if (!data) return null;
 
   const profitColor = parseFloat(data.stats.totalProfit) >= 0 ? "text-green-400" : "text-red-400";
@@ -446,7 +395,7 @@ export default function Dashboard() {
         {/* KPI Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <div className="text-gray-400 text-xs uppercase">Win Rate</div>
+              <div className="text-gray-400 text-xs uppercase">Win Rate (All)</div>
               <div className="text-2xl font-bold text-white">{data.stats.winRate}%</div>
               <div className="text-xs text-gray-500">{data.stats.wins}W - {data.stats.losses}L</div>
            </div>
@@ -471,7 +420,7 @@ export default function Dashboard() {
            </div>
         </div>
 
-        <PriceChart />
+        <ChartSection />
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -521,31 +470,15 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Recent Trades */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-               <h2 className="text-lg font-bold mb-3">Recent History</h2>
-               <div className="space-y-2">
-                 {data.trades.slice(0, 5).map(t => (
-                   <div key={t.id} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                         <div className={`text-lg ${t.profit > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                           {t.profit > 0 ? '↗' : '↘'}
-                         </div>
-                         <div>
-                           <div className="font-semibold text-white">{t.symbol}</div>
-                           <div className="text-xs text-gray-500">{new Date(t.closeTime).toLocaleString()}</div>
-                         </div>
-                      </div>
-                      <div className="text-right">
-                         <div className={`font-mono font-bold ${t.profit > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                           {t.profit > 0 ? '+' : ''}{t.profit.toFixed(2)}
-                         </div>
-                         <div className="text-xs text-gray-400">{t.closeReason}</div>
-                      </div>
-                   </div>
-                 ))}
-                 {data.trades.length === 0 && <div className="text-center text-gray-500 py-4">No trades yet</div>}
-               </div>
+            {/* Trade History Table */}
+            <div className="h-[600px] flex flex-col">
+               <h2 className="text-lg font-bold mb-3">Trade History</h2>
+               <TradeHistoryTable 
+                  trades={data.trades} 
+                  filters={filters} 
+                  onFilterChange={setFilters} 
+                  isLoading={loading}
+                />
             </div>
 
           </div>

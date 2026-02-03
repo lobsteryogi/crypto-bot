@@ -4,20 +4,34 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
-interface ChartPoint {
+interface RawLog {
   timestamp: string;
   price: number;
-  rsi: number | null;
-  maFast: number | null;
-  maSlow: number | null;
-  signal?: string;
+  signal?: {
+    indicators?: {
+      rsi?: number;
+      maFast?: number;
+      maSlow?: number;
+    };
+    reason?: string;
+  };
 }
 
-function calculateSMA(data: number[], window: number): number[] {
-  const result: number[] = [];
+interface Candle {
+  time: number; // Unix timestamp in seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number; // using tick count as proxy
+  rsi: number | null;
+}
+
+function calculateSMA(data: number[], window: number): (number | null)[] {
+  const result: (number | null)[] = [];
   for (let i = 0; i < data.length; i++) {
     if (i < window - 1) {
-      result.push(null as any); // Or handle initial undefined
+      result.push(null);
       continue;
     }
     const slice = data.slice(i - window + 1, i + 1);
@@ -33,61 +47,83 @@ export async function GET() {
     const logsDir = path.join(rootDir, 'logs');
     const cycleLogPath = path.join(logsDir, 'cycles.jsonl');
     
-    let chartData: ChartPoint[] = [];
-    
-    if (fs.existsSync(cycleLogPath)) {
-      // Read file
-      const content = fs.readFileSync(cycleLogPath, 'utf-8');
-      const lines = content.trim().split('\n');
-      
-      // Take last 100 lines for the chart
-      // We need a bit more history to calculate MAs correctly for the visible part if we were calculating strictly on this slice,
-      // but since we are just visualizing the "recent window", calculating on the last 150 and returning 100 is safer.
-      const sliceSize = 150; 
-      const rawData = lines.slice(-sliceSize).map(line => {
-        try { return JSON.parse(line); } catch { return null; }
-      }).filter(Boolean);
-
-      const prices = rawData.map(d => d.price);
-      
-      // Calculate MAs locally based on the prices in the log
-      // This ensures they match the chart visual exactly
-      const ma5 = calculateSMA(prices, 5);
-      const ma13 = calculateSMA(prices, 13);
-
-      chartData = rawData.map((d, i) => {
-        // Try to get RSI from log, otherwise null (or could calc, but log has the "bot's view")
-        // Log path: signal.indicators.rsi1m or signal.reason parsing if needed
-        let rsi = null;
-        if (d.signal?.indicators?.rsi1m) {
-          rsi = d.signal.indicators.rsi1m;
-        } else if (d.signal?.reason && d.signal.reason.includes('RSI')) {
-             // Fallback: try to extract RSI from reason string "RSI overbought (84.75)"
-             const match = d.signal.reason.match(/RSI.*?([\d.]+)/);
-             if (match) rsi = parseFloat(match[1]);
-        }
-
-        return {
-          timestamp: d.timestamp,
-          price: d.price,
-          rsi: rsi,
-          maFast: ma5[i], // 5
-          maSlow: ma13[i], // 13
-          signal: d.signal?.signal // buy/sell for markers
-        };
-      });
-
-      // Trim to the requested display size (last 100 max)
-      if (chartData.length > 100) {
-        chartData = chartData.slice(chartData.length - 100);
-      }
+    if (!fs.existsSync(cycleLogPath)) {
+      return NextResponse.json({ data: [] });
     }
+
+    // Read file - taking a larger chunk to ensure we have enough history for candles
+    // In production with huge files, readStream or tailing is better. 
+    // Here we'll read the whole file if small, or last 500 lines roughly.
+    // For simplicity/reliability in this env, reading strict lines.
+    const content = fs.readFileSync(cycleLogPath, 'utf-8');
+    const lines = content.trim().split('\n');
+    
+    // We need enough data to build candles and then MAs. 
+    // Let's take last 2000 ticks to form minute candles.
+    const rawData: RawLog[] = lines.slice(-2000).map(line => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+
+    if (rawData.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    // Group by minute
+    const candlesMap = new Map<number, Candle>();
+
+    rawData.forEach(log => {
+      const date = new Date(log.timestamp);
+      // Floor to minute (seconds = 0)
+      date.setSeconds(0, 0);
+      const time = date.getTime() / 1000; // seconds
+
+      if (!candlesMap.has(time)) {
+        candlesMap.set(time, {
+          time,
+          open: log.price,
+          high: log.price,
+          low: log.price,
+          close: log.price,
+          volume: 1,
+          rsi: null
+        });
+      } else {
+        const c = candlesMap.get(time)!;
+        c.high = Math.max(c.high, log.price);
+        c.low = Math.min(c.low, log.price);
+        c.close = log.price;
+        c.volume += 1;
+        // Update RSI from the latest tick in the candle if available
+        if (log.signal?.indicators?.rsi) {
+            c.rsi = log.signal.indicators.rsi;
+        } else if (log.signal?.reason) {
+            // Fallback parse RSI from reason string if not in indicators
+            const match = log.signal.reason.match(/RSI.*?([\d.]+)/);
+            if (match) c.rsi = parseFloat(match[1]);
+        }
+      }
+    });
+
+    const candles = Array.from(candlesMap.values()).sort((a, b) => a.time - b.time);
+
+    // Calculate MAs based on Candle Closes
+    const closePrices = candles.map(c => c.close);
+    const ma5 = calculateSMA(closePrices, 5);
+    const ma13 = calculateSMA(closePrices, 13);
+
+    // Merge MAs into response
+    const chartData = candles.map((c, i) => ({
+      ...c,
+      ma5: ma5[i],
+      ma13: ma13[i]
+    }));
 
     return NextResponse.json({
       data: chartData
     });
 
   } catch (error: any) {
+    console.error("API Error:", error);
     return NextResponse.json({ 
       status: 'error', 
       message: error.message 

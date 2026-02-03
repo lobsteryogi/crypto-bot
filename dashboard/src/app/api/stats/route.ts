@@ -1,12 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const range = searchParams.get('range') || 'all';
+    const status = searchParams.get('status') || 'all';
+    const minProfit = searchParams.get('minProfit');
+    const maxProfit = searchParams.get('maxProfit');
+    const sortBy = searchParams.get('sortBy') || 'closeTime';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
+
     const rootDir = path.join(process.cwd(), '..');
     const dataDir = path.join(rootDir, 'data');
     const statePath = path.join(dataDir, 'paper_state.json');
@@ -22,11 +30,69 @@ export async function GET() {
     const balance = state.balance || 10000;
     const initialBalance = 10000;
 
-    const wins = trades.filter((t: any) => t.profit > 0);
-    const losses = trades.filter((t: any) => t.profit <= 0);
+    // --- Global Stats (Unfiltered) ---
+    const allWins = trades.filter((t: any) => t.profit > 0);
+    const allLosses = trades.filter((t: any) => t.profit <= 0);
     const totalProfit = trades.reduce((sum: number, t: any) => sum + t.profit, 0);
-    const winRate = trades.length > 0 ? (wins.length / trades.length * 100) : 0;
+    const winRate = trades.length > 0 ? (allWins.length / trades.length * 100) : 0;
     const roi = ((balance - initialBalance) / initialBalance * 100);
+
+    // --- Filtering ---
+    let filteredTrades = [...trades];
+
+    // Date Range
+    const now = new Date();
+    if (range !== 'all') {
+      filteredTrades = filteredTrades.filter((t: any) => {
+        const date = new Date(t.closeTime || t.openTime);
+        const diffTime = Math.abs(now.getTime() - date.getTime());
+        const diffDays = diffTime / (1000 * 60 * 60 * 24); 
+
+        if (range === 'today') return diffDays <= 1;
+        if (range === 'week') return diffDays <= 7;
+        if (range === 'month') return diffDays <= 30;
+        return true;
+      });
+    }
+
+    // Status (Win/Loss)
+    if (status !== 'all') {
+      filteredTrades = filteredTrades.filter((t: any) => {
+        if (status === 'win') return t.profit > 0;
+        if (status === 'loss') return t.profit <= 0;
+        return true;
+      });
+    }
+
+    // Profit Range
+    if (minProfit) {
+      filteredTrades = filteredTrades.filter((t: any) => t.profit >= parseFloat(minProfit));
+    }
+    if (maxProfit) {
+      filteredTrades = filteredTrades.filter((t: any) => t.profit <= parseFloat(maxProfit));
+    }
+
+    // Sorting
+    filteredTrades.sort((a: any, b: any) => {
+      let valA = a[sortBy];
+      let valB = b[sortBy];
+
+      // Handle dates and numbers
+      if (sortBy.toLowerCase().includes('time')) {
+        valA = new Date(valA || 0).getTime();
+        valB = new Date(valB || 0).getTime();
+      } else if (typeof valA === 'number') {
+        // Numbers are fine
+      } else {
+        // Strings
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
 
     // --- 2. Fetch Recent Cycles ---
     const logsDir = path.join(rootDir, 'logs');
@@ -62,7 +128,7 @@ export async function GET() {
         });
       }
     } catch (e) {
-      console.error("Backlog error", e);
+      // Ignore
     }
 
     // --- 5. Fetch Strategy Config ---
@@ -70,13 +136,7 @@ export async function GET() {
     try {
       const configPath = path.join(rootDir, 'src', 'config.js');
       if (fs.existsSync(configPath)) {
-        // Read file and try to extract the config object text roughly
-        // We'll send the raw text or a cleaner version. sending raw text is safer than eval for now unless we need structured data.
-        // Actually, let's try to extract JSON-like parts or just send the whole useful block.
-        // For display purposes, sending the relevant sections of the file is enough.
         const fullContent = fs.readFileSync(configPath, 'utf-8');
-        
-        // Extract the object inside export const config = { ... };
         const match = fullContent.match(/export const config = ({[\s\S]*?});/);
         if (match) {
             configStr = match[1];
@@ -93,7 +153,8 @@ export async function GET() {
       lastUpdate: state.lastUpdate,
       balance,
       initialBalance,
-      trades: trades.reverse(), // Send all trades for charting, reversed for list
+      trades: filteredTrades,
+      allTradesCount: trades.length, 
       positions,
       recentCycles,
       changelog,
@@ -101,8 +162,8 @@ export async function GET() {
       configRaw: configStr,
       stats: {
         totalTrades: trades.length,
-        wins: wins.length,
-        losses: losses.length,
+        wins: allWins.length,
+        losses: allLosses.length,
         winRate: winRate.toFixed(1),
         totalProfit: totalProfit.toFixed(2),
         roi: roi.toFixed(2),

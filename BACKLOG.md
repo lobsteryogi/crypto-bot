@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** จะเริ่มทำต่อประมาณ **14:00** (3 ก.พ. 2026)
+> **📅 Next Task:** กำลังทำ TradingView lightweight-charts refactor...
 > 
-> **🕐 Last Updated:** 13:33
+> **🕐 Last Updated:** 13:44
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -19,8 +19,9 @@
 ## 🖥️ Frontend (Dashboard)
 - [x] Alert bar showing changelog (recent bot updates/changes)
 - [x] Backlog section showing pending/completed items
-- [ ] Real-time price chart with indicators
-- [ ] Trade history table with filters
+- [x] Real-time price chart with indicators
+- [ ] **Refactor chart to use TradingView lightweight-charts**
+- [x] Trade history table with filters
 - [x] Win rate by hour of day chart
 - [ ] Win rate by day of week chart
 - [x] Profit/Loss curve over time
@@ -34,6 +35,7 @@
 - [x] Crypto sentiment analysis for traded coins (news, social, Fear & Greed Index)
 - [x] Integrate sentiment score into trading decisions
 - [ ] Alert on extreme sentiment shifts
+- [ ] Show Fear & Greed Index on dashboard
 
 ## 🧠 Self-Learning
 - [ ] Auto-adjust RSI thresholds based on win rate
@@ -41,6 +43,7 @@
 - [ ] Learn best leverage for current volatility
 - [ ] Pattern recognition from losing trades
 - [ ] Weekly strategy evolution report
+- [ ] Sync paper trades to self-learning skill for analysis
 
 ## ✅ Completed
 - [x] Basic RSI + MA strategy
