@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from 'react';
-import { createChart, ColorType, CrosshairMode, ISeriesApi, Time, UTCTimestamp, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, ISeriesApi, Time, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 
 export interface ChartData {
-  time: number; // Unix timestamp in seconds
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -17,51 +17,50 @@ export interface ChartData {
 
 interface Props {
   data: ChartData[];
-  colors?: {
-    backgroundColor?: string;
-    lineColor?: string;
-    textColor?: string;
-    areaTopColor?: string;
-    areaBottomColor?: string;
-  };
 }
 
-export const TradingViewChart = ({ data, colors = {} }: Props) => {
+export const TradingViewChart = ({ data }: Props) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<ReturnType<typeof createChart> | null>(null);
   
-  // Series refs
   const candleSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const ma5Series = useRef<ISeriesApi<"Line"> | null>(null);
   const ma13Series = useRef<ISeriesApi<"Line"> | null>(null);
   
-  // RSI Chart Refs
   const rsiContainerRef = useRef<HTMLDivElement>(null);
   const rsiChartInstance = useRef<ReturnType<typeof createChart> | null>(null);
   const rsiSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const rsiOverboughtLine = useRef<ISeriesApi<"Line"> | null>(null);
   const rsiOversoldLine = useRef<ISeriesApi<"Line"> | null>(null);
 
-  const {
-    backgroundColor = '#1f2937', // gray-800
-    textColor = '#d1d5db', // gray-300
-  } = colors;
+  // Colors using CSS variables compatible values
+  const backgroundColor = '#1a1a1a';
+  const textColor = '#a1a1aa';
+  const gridColor = '#27272a';
+  const upColor = '#22c55e';
+  const downColor = '#ef4444';
+  const yellowColor = '#eab308';
+  const blueColor = '#3b82f6';
+  const purpleColor = '#a855f7';
 
   useEffect(() => {
     if (!chartContainerRef.current || !rsiContainerRef.current) return;
 
-    // --- Main Chart ---
-    const chart = createChart(chartContainerRef.current, {
+    const container = chartContainerRef.current;
+    const rsiContainer = rsiContainerRef.current;
+
+    // Main Chart
+    const chart = createChart(container, {
       layout: {
         background: { type: ColorType.Solid, color: backgroundColor },
         textColor,
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 300,
+      width: container.clientWidth,
+      height: 250,
       grid: {
-        vertLines: { color: '#374151' }, // gray-700
-        horzLines: { color: '#374151' },
+        vertLines: { color: gridColor },
+        horzLines: { color: gridColor },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -69,63 +68,64 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
+        borderColor: gridColor,
+      },
+      rightPriceScale: {
+        borderColor: gridColor,
       },
     });
 
     chartInstance.current = chart;
 
-    // Candlesticks (v5 API)
+    // Candlesticks
     candleSeries.current = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e', // green-500
-      downColor: '#ef4444', // red-500
+      upColor,
+      downColor,
       borderVisible: false,
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      wickUpColor: upColor,
+      wickDownColor: downColor,
     });
 
-    // Volume (v5 API)
+    // Volume
     volumeSeries.current = chart.addSeries(HistogramSeries, {
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: '', // Overlay on same chart but different scale
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
     });
     volumeSeries.current.priceScale().applyOptions({
-      scaleMargins: {
-        top: 0.8, // Push to bottom
-        bottom: 0,
-      },
+      scaleMargins: { top: 0.85, bottom: 0 },
     });
 
-    // Moving Averages (v5 API)
+    // Moving Averages
     ma5Series.current = chart.addSeries(LineSeries, {
-      color: '#facc15', // yellow
-      lineWidth: 2,
+      color: yellowColor,
+      lineWidth: 1,
       priceLineVisible: false,
-      title: 'SMA 5',
+      title: 'MA5',
     });
 
     ma13Series.current = chart.addSeries(LineSeries, {
-      color: '#3b82f6', // blue
-      lineWidth: 2,
+      color: blueColor,
+      lineWidth: 1,
       priceLineVisible: false,
-      title: 'SMA 13',
+      title: 'MA13',
     });
 
-    // --- RSI Chart ---
-    const rsiChart = createChart(rsiContainerRef.current, {
+    // RSI Chart
+    const rsiChart = createChart(rsiContainer, {
       layout: {
         background: { type: ColorType.Solid, color: backgroundColor },
         textColor,
       },
-      width: rsiContainerRef.current.clientWidth,
-      height: 100,
+      width: rsiContainer.clientWidth,
+      height: 80,
       grid: {
-        vertLines: { color: '#374151' },
-        horzLines: { color: '#374151' },
+        vertLines: { color: gridColor },
+        horzLines: { color: gridColor },
       },
-      timeScale: {
-        visible: false,
+      timeScale: { visible: false },
+      rightPriceScale: {
+        borderColor: gridColor,
+        scaleMargins: { top: 0.1, bottom: 0.1 },
       },
       handleScale: false,
       handleScroll: false,
@@ -134,57 +134,66 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
     rsiChartInstance.current = rsiChart;
 
     rsiSeries.current = rsiChart.addSeries(LineSeries, {
-      color: '#c084fc', // purple
+      color: purpleColor,
       lineWidth: 2,
     });
     
-    // RSI Levels (v5 API)
-    const overbought = rsiChart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, lineStyle: 2, title: '70' });
-    const oversold = rsiChart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, lineStyle: 2, title: '30' });
-    rsiOverboughtLine.current = overbought;
-    rsiOversoldLine.current = oversold;
-
-    // --- Synchronization (Basic) ---
-    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-        if (range && range.from && range.to && rsiChartInstance.current) {
-            try {
-                rsiChartInstance.current.timeScale().setVisibleRange(range);
-            } catch (e) {
-                // Ignore sync errors
-            }
-        }
+    rsiOverboughtLine.current = rsiChart.addSeries(LineSeries, { 
+      color: downColor, 
+      lineWidth: 1, 
+      lineStyle: 2,
+    });
+    rsiOversoldLine.current = rsiChart.addSeries(LineSeries, { 
+      color: upColor, 
+      lineWidth: 1, 
+      lineStyle: 2,
     });
 
-    const handleResize = () => {
-      if (chartContainerRef.current && chartInstance.current) {
-        chartInstance.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+    // Synchronization
+    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+      if (range && range.from && range.to && rsiChartInstance.current) {
+        try {
+          rsiChartInstance.current.timeScale().setVisibleRange(range);
+        } catch (e) {
+          // Ignore sync errors
+        }
       }
-      if (rsiContainerRef.current && rsiChartInstance.current) {
-        rsiChartInstance.current.applyOptions({ width: rsiContainerRef.current.clientWidth });
+    });
+
+    // Resize handler
+    const handleResize = () => {
+      if (container && chartInstance.current) {
+        chartInstance.current.applyOptions({ width: container.clientWidth });
+      }
+      if (rsiContainer && rsiChartInstance.current) {
+        rsiChartInstance.current.applyOptions({ width: rsiContainer.clientWidth });
       }
     };
 
+    // Use ResizeObserver for better performance
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
+    
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       chart.remove();
       rsiChart.remove();
     };
-  }, [backgroundColor, textColor]);
+  }, []);
 
   // Update Data
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    // Filter out any null/undefined values in data
     const validData = data.filter(d => 
       d && d.time != null && d.open != null && d.high != null && d.low != null && d.close != null
     );
     
     if (validData.length === 0) return;
 
-    // Convert data to TradingView format
     const candles = validData.map(d => ({
       time: d.time as Time,
       open: d.open,
@@ -198,22 +207,21 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
       .map(d => ({
         time: d.time as Time,
         value: d.volume,
-        color: d.close >= d.open ? '#22c55e80' : '#ef444480',
+        color: d.close >= d.open ? '#22c55e60' : '#ef444460',
       }));
 
     const ma5Data = validData
-        .filter(d => d.ma5 != null)
-        .map(d => ({ time: d.time as Time, value: d.ma5! }));
+      .filter(d => d.ma5 != null)
+      .map(d => ({ time: d.time as Time, value: d.ma5! }));
     
     const ma13Data = validData
-        .filter(d => d.ma13 != null)
-        .map(d => ({ time: d.time as Time, value: d.ma13! }));
+      .filter(d => d.ma13 != null)
+      .map(d => ({ time: d.time as Time, value: d.ma13! }));
 
     const rsiData = validData
-        .filter(d => d.rsi != null)
-        .map(d => ({ time: d.time as Time, value: d.rsi! }));
+      .filter(d => d.rsi != null)
+      .map(d => ({ time: d.time as Time, value: d.rsi! }));
 
-    // Update Series
     if (candleSeries.current) candleSeries.current.setData(candles);
     if (volumeSeries.current) volumeSeries.current.setData(volumes);
     if (ma5Series.current) ma5Series.current.setData(ma5Data);
@@ -221,20 +229,25 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
     
     if (rsiSeries.current) rsiSeries.current.setData(rsiData);
     
-    // Constant lines for RSI
     if (rsiOverboughtLine.current && rsiData.length > 0) {
-        rsiOverboughtLine.current.setData(rsiData.map(d => ({ time: d.time, value: 70 })));
+      rsiOverboughtLine.current.setData(rsiData.map(d => ({ time: d.time, value: 70 })));
     }
     if (rsiOversoldLine.current && rsiData.length > 0) {
-        rsiOversoldLine.current.setData(rsiData.map(d => ({ time: d.time, value: 30 })));
+      rsiOversoldLine.current.setData(rsiData.map(d => ({ time: d.time, value: 30 })));
     }
 
   }, [data]);
 
   return (
     <div className="flex flex-col gap-1 w-full">
-      <div ref={chartContainerRef} className="w-full h-[300px] border border-gray-700 rounded-lg overflow-hidden relative" />
-      <div ref={rsiContainerRef} className="w-full h-[100px] border border-gray-700 rounded-lg overflow-hidden relative" />
+      <div 
+        ref={chartContainerRef} 
+        className="w-full h-[250px] rounded-lg overflow-hidden bg-[#1a1a1a]" 
+      />
+      <div 
+        ref={rsiContainerRef} 
+        className="w-full h-[80px] rounded-lg overflow-hidden bg-[#1a1a1a]" 
+      />
     </div>
   );
 };

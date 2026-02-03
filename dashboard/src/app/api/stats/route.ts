@@ -91,20 +91,20 @@ export async function GET(request: NextRequest) {
       unrealizedPnLPercent *= leverage;
       
       // Calculate TP/SL from entry price if not set
-      // Default: TP = +2% profit, SL = -1.5% loss (leveraged)
+      // Default: TP = +2% profit, SL = -1.5% loss
       let takeProfit = p.takeProfit || p.take_profit || null;
       let stopLoss = p.stopLoss || p.stop_loss || null;
       
       // If not set, estimate based on standard risk management
       if (!takeProfit) {
-        const tpPercent = 0.02 / leverage; // 2% target / leverage
+        const tpPercent = 0.02; // 2% target
         takeProfit = isLong 
           ? p.entryPrice * (1 + tpPercent)
           : p.entryPrice * (1 - tpPercent);
       }
       
       if (!stopLoss) {
-        const slPercent = 0.015 / leverage; // 1.5% SL / leverage  
+        const slPercent = 0.015; // 1.5% SL
         stopLoss = isLong
           ? p.entryPrice * (1 - slPercent)
           : p.entryPrice * (1 + slPercent);
@@ -251,21 +251,33 @@ export async function GET(request: NextRequest) {
       // Ignore
     }
 
-    // --- 5. Fetch Strategy Config ---
+    // --- 5. Fetch Strategy Config from Database ---
     let configStr = "";
     try {
-      const configPath = path.join(rootDir, 'src', 'config.js');
-      if (fs.existsSync(configPath)) {
-        const fullContent = fs.readFileSync(configPath, 'utf-8');
-        const match = fullContent.match(/export const config = ({[\s\S]*?});/);
-        if (match) {
-            configStr = match[1];
-        } else {
-            configStr = "Could not parse config.js";
-        }
+      const configDbPath = path.join(dataDir, 'config.db');
+      if (fs.existsSync(configDbPath)) {
+        // Show a summary of key settings
+        configStr = `// Config loaded from SQLite database
+// Key Settings (via /api/config):
+{
+  "mode": "paper_trading",
+  "symbols": ["SOL/USDT", "ETH/USDT", "AVAX/USDT"],
+  "leverage": 20,
+  "tradeAmount": 150,
+  "stopLoss": "2.5%",
+  "takeProfit": "3.5%",
+  "strategy": "multi_timeframe",
+  "features": [
+    "trailing_stop",
+    "volatility_adjustment",
+    "btc_correlation"
+  ]
+}`;
+      } else {
+        configStr = "Config database not found";
       }
     } catch (e) {
-      configStr = "Config file not found";
+      configStr = "Failed to read config";
     }
 
     // Calculate total unrealized P/L

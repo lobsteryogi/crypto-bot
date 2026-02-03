@@ -417,7 +417,12 @@ async function runTradingCycle(symbol) {
     log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (WinRate) * ${mMult.toFixed(2)}x (Martingale) = ${(sizing.multiplier * mMult).toFixed(2)}x Total`);
     
     const effectiveAmount = (finalAmount * leverage) / currentPrice;
-    paperTrader.buy(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
+    
+    // Calculate TP/SL prices for LONG
+    const stopLossPrice = currentPrice * (1 - currentSlPercent / 100);
+    const takeProfitPrice = currentPrice * (1 + currentTpPercent / 100);
+    
+    paperTrader.buy(symbol, currentPrice, effectiveAmount, signal.reason, leverage, stopLossPrice, takeProfitPrice);
   } 
   else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && openPositionsCount < maxPositions) {
     // Check risk filter (loss pattern analysis)
@@ -457,7 +462,12 @@ async function runTradingCycle(symbol) {
     log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (WinRate) * ${mMult.toFixed(2)}x (Martingale) = ${(sizing.multiplier * mMult).toFixed(2)}x Total`);
     
     const effectiveAmount = (finalAmount * leverage) / currentPrice;
-    paperTrader.short(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
+    
+    // Calculate TP/SL prices for SHORT (inverted)
+    const stopLossPrice = currentPrice * (1 + currentSlPercent / 100);
+    const takeProfitPrice = currentPrice * (1 - currentTpPercent / 100);
+    
+    paperTrader.short(symbol, currentPrice, effectiveAmount, signal.reason, leverage, stopLossPrice, takeProfitPrice);
   }
   
   // Log minimal stats per cycle
