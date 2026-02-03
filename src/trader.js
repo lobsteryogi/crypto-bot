@@ -101,12 +101,20 @@ function executeEntry(symbol, analysis, price) {
   }
 
   const order = pm.calculateOrderSize(trader.getStats());
-  const effectiveAmount = (order.amount * analysis.adjustments.leverage) / price;
+  
+  // Side-specific leverage adjustment (learned from loss patterns)
+  // LONG positions lose ~3x more per losing trade (12.64 vs 4.72 USDT)
+  let leverage = analysis.adjustments.leverage;
+  if (analysis.signal === 'buy') {
+    leverage = Math.max(3, Math.round(leverage * 0.7)); // Reduce LONG leverage by 30%
+  }
+  
+  const effectiveAmount = (order.amount * leverage) / price;
 
   if (analysis.signal === 'buy') {
-    trader.buy(symbol, price, effectiveAmount, analysis.reason, analysis.adjustments.leverage);
+    trader.buy(symbol, price, effectiveAmount, analysis.reason, leverage);
   } else {
-    trader.short(symbol, price, effectiveAmount, analysis.reason, analysis.adjustments.leverage);
+    trader.short(symbol, price, effectiveAmount, analysis.reason, leverage);
   }
 }
 
