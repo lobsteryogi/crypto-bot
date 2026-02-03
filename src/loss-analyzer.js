@@ -1,31 +1,41 @@
 #!/usr/bin/env node
 /**
  * Loss Pattern Analyzer
- * วิเคราะห์ losing trades หา patterns ที่ทำให้ขาดทุน
+ * Analyzes losing trades to find patterns that cause losses.
+ * Uses SQLite database for trade data.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { TradeDB } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const TRADES_FILE = path.join(__dirname, '../data/paper_state.json');
 const OUTPUT_FILE = path.join(__dirname, '../data/loss-patterns.json');
 
+/**
+ * Load trades from SQLite database
+ * @returns {Object[]} List of trades
+ */
 function loadTrades() {
-  if (!fs.existsSync(TRADES_FILE)) {
+  try {
+    return TradeDB.getAllTrades();
+  } catch (error) {
+    console.error('Failed to load trades from DB:', error.message);
     return [];
   }
-  const data = fs.readFileSync(TRADES_FILE, 'utf8');
-  const state = JSON.parse(data);
-  return state.trades || [];
 }
 
+/**
+ * Analyze losing trades and identify patterns
+ * @returns {Object|null} Loss patterns analysis or null if insufficient data
+ */
 function analyzeLosses() {
   const trades = loadTrades();
-  const losses = trades.filter(t => t.profit !== undefined && t.profit < 0);
+  // SQLite uses 'pnl' field instead of 'profit'
+  const losses = trades.filter(t => t.pnl !== undefined && t.pnl < 0);
   
   if (losses.length < 5) {
     console.log('⚠️ Not enough losing trades to analyze (need at least 5)');
@@ -40,31 +50,31 @@ function analyzeLosses() {
   const patterns = {
     timestamp: new Date().toISOString(),
     totalLosses: losses.length,
-    totalLossAmount: losses.reduce((sum, t) => sum + Math.abs(t.profit), 0),
-    avgLoss: losses.reduce((sum, t) => sum + Math.abs(t.profit), 0) / losses.length,
+    totalLossAmount: losses.reduce((sum, t) => sum + Math.abs(t.pnl), 0),
+    avgLoss: losses.reduce((sum, t) => sum + Math.abs(t.pnl), 0) / losses.length,
     patterns: {}
   };
 
-  // 1. ขาดทุนตาม timeframe
-  const byTimeframe = {};
+  // 1. Losses by symbol
+  const bySymbol = {};
   losses.forEach(t => {
-    const tf = t.metadata?.timeframe || 'unknown';
-    if (!byTimeframe[tf]) byTimeframe[tf] = { count: 0, totalLoss: 0 };
-    byTimeframe[tf].count++;
-    byTimeframe[tf].totalLoss += Math.abs(t.profit);
+    const symbol = t.symbol || 'unknown';
+    if (!bySymbol[symbol]) bySymbol[symbol] = { count: 0, totalLoss: 0 };
+    bySymbol[symbol].count++;
+    bySymbol[symbol].totalLoss += Math.abs(t.pnl);
   });
-  patterns.patterns.byTimeframe = byTimeframe;
+  patterns.patterns.bySymbol = bySymbol;
 
-  // 2. ขาดทุนตาม RSI range
+  // 2. Losses by RSI range (using stored RSI in trades table)
   const byRSI = {
     oversold: { count: 0, totalLoss: 0 },  // < 30
     normal: { count: 0, totalLoss: 0 },    // 30-70
     overbought: { count: 0, totalLoss: 0 } // > 70
   };
   losses.forEach(t => {
-    const rsi = t.metadata?.rsi_1m;
+    const rsi = t.rsi;  // SQLite field
     if (!rsi) return;
-    const loss = Math.abs(t.profit);
+    const loss = Math.abs(t.pnl);
     if (rsi < 30) {
       byRSI.oversold.count++;
       byRSI.oversold.totalLoss += loss;
@@ -78,15 +88,15 @@ function analyzeLosses() {
   });
   patterns.patterns.byRSI = byRSI;
 
-  // 3. ขาดทุนตาม trend direction
+  // 3. Losses by trend direction
   const byTrend = {
     uptrend: { count: 0, totalLoss: 0 },
     downtrend: { count: 0, totalLoss: 0 },
     sideways: { count: 0, totalLoss: 0 }
   };
   losses.forEach(t => {
-    const trend = t.metadata?.trend_5m || 'sideways';
-    const loss = Math.abs(t.profit);
+    const trend = t.trend || 'sideways';  // SQLite field
+    const loss = Math.abs(t.pnl);
     if (byTrend[trend]) {
       byTrend[trend].count++;
       byTrend[trend].totalLoss += loss;
@@ -94,100 +104,77 @@ function analyzeLosses() {
   });
   patterns.patterns.byTrend = byTrend;
 
-  // 4. ขาดทุนตาม volatility
+  // 4. Losses by volatility
   const byVolatility = {
     low: { count: 0, totalLoss: 0 },
     normal: { count: 0, totalLoss: 0 },
     high: { count: 0, totalLoss: 0 }
   };
   losses.forEach(t => {
-    const vol = t.metadata?.volatility || 'normal';
-    const loss = Math.abs(t.profit);
-    if (byVolatility[vol]) {
-      byVolatility[vol].count++;
-      byVolatility[vol].totalLoss += loss;
-    }
+    const volMult = t.volatility_multiplier || 1;
+    const vol = volMult < 0.8 ? 'low' : volMult > 1.3 ? 'high' : 'normal';
+    const loss = Math.abs(t.pnl);
+    byVolatility[vol].count++;
+    byVolatility[vol].totalLoss += loss;
   });
   patterns.patterns.byVolatility = byVolatility;
 
-  // 5. ขาดทุนตาม side (LONG/SHORT)
+  // 5. Losses by side (LONG/SHORT)
   const bySide = {
     LONG: { count: 0, totalLoss: 0 },
     SHORT: { count: 0, totalLoss: 0 }
   };
   losses.forEach(t => {
-    const side = t.type?.toUpperCase() || 'LONG';
-    const loss = Math.abs(t.profit);
-    bySide[side].count++;
-    bySide[side].totalLoss += loss;
+    const side = t.side || 'LONG';  // SQLite uses 'side' not 'type'
+    const loss = Math.abs(t.pnl);
+    if (bySide[side]) {
+      bySide[side].count++;
+      bySide[side].totalLoss += loss;
+    }
   });
   patterns.patterns.bySide = bySide;
 
-  // 6. ขาดทุนตามช่วงเวลา (hour)
+  // 6. Losses by hour (using hour_utc from SQLite)
   const byHour = {};
   losses.forEach(t => {
-    const hour = new Date(t.openTime).getHours();
+    const hour = t.hour_utc ?? new Date(t.opened_at).getUTCHours();
     if (!byHour[hour]) byHour[hour] = { count: 0, totalLoss: 0 };
     byHour[hour].count++;
-    byHour[hour].totalLoss += Math.abs(t.profit);
+    byHour[hour].totalLoss += Math.abs(t.pnl);
   });
   patterns.patterns.byHour = byHour;
 
-  // 7. ขาดทุนตาม BTC correlation
-  const byBtcCorr = {
-    positive: { count: 0, totalLoss: 0 },  // BTC up, SOL up
-    negative: { count: 0, totalLoss: 0 },  // BTC down, SOL down
-    divergent: { count: 0, totalLoss: 0 }  // BTC/SOL move opposite
+  // 7. Losses by BTC momentum
+  const byBtcMomentum = {
+    bullish: { count: 0, totalLoss: 0 },
+    bearish: { count: 0, totalLoss: 0 },
+    neutral: { count: 0, totalLoss: 0 }
   };
   losses.forEach(t => {
-    const btcTrend = t.metadata?.btc_trend_5m;
-    const solTrend = t.metadata?.trend_5m;
-    const loss = Math.abs(t.profit);
-    
-    if (!btcTrend || !solTrend) return;
-    
-    if (btcTrend === solTrend) {
-      byBtcCorr.positive.count++;
-      byBtcCorr.positive.totalLoss += loss;
-    } else if ((btcTrend === 'uptrend' && solTrend === 'downtrend') ||
-               (btcTrend === 'downtrend' && solTrend === 'uptrend')) {
-      byBtcCorr.divergent.count++;
-      byBtcCorr.divergent.totalLoss += loss;
-    } else {
-      byBtcCorr.negative.count++;
-      byBtcCorr.negative.totalLoss += loss;
+    const btc = t.btc_momentum || 'neutral';
+    const loss = Math.abs(t.pnl);
+    if (byBtcMomentum[btc]) {
+      byBtcMomentum[btc].count++;
+      byBtcMomentum[btc].totalLoss += loss;
     }
   });
-  patterns.patterns.byBtcCorr = byBtcCorr;
+  patterns.patterns.byBtcMomentum = byBtcMomentum;
 
-  // 8. ขาดทุนตาม sentiment
+  // 8. Losses by sentiment
   const bySentiment = {
-    extreme_fear: { count: 0, totalLoss: 0 },  // < 25
-    fear: { count: 0, totalLoss: 0 },          // 25-45
-    neutral: { count: 0, totalLoss: 0 },       // 45-55
-    greed: { count: 0, totalLoss: 0 },         // 55-75
-    extreme_greed: { count: 0, totalLoss: 0 }  // > 75
+    extreme_fear: { count: 0, totalLoss: 0 },
+    fear: { count: 0, totalLoss: 0 },
+    neutral: { count: 0, totalLoss: 0 },
+    greed: { count: 0, totalLoss: 0 },
+    extreme_greed: { count: 0, totalLoss: 0 }
   };
   losses.forEach(t => {
-    const fng = t.metadata?.fear_greed_index;
-    if (!fng) return;
-    const loss = Math.abs(t.profit);
-    
-    if (fng < 25) {
-      bySentiment.extreme_fear.count++;
-      bySentiment.extreme_fear.totalLoss += loss;
-    } else if (fng < 45) {
-      bySentiment.fear.count++;
-      bySentiment.fear.totalLoss += loss;
-    } else if (fng < 55) {
-      bySentiment.neutral.count++;
-      bySentiment.neutral.totalLoss += loss;
-    } else if (fng < 75) {
-      bySentiment.greed.count++;
-      bySentiment.greed.totalLoss += loss;
-    } else {
-      bySentiment.extreme_greed.count++;
-      bySentiment.extreme_greed.totalLoss += loss;
+    if (!t.sentiment) return;
+    const sent = t.sentiment.toLowerCase().replace(' ', '_');
+    const loss = Math.abs(t.pnl);
+    if (bySentiment[sent]) {
+      bySentiment[sent].count++;
+      bySentiment[sent].totalLoss += loss;
     }
   });
   patterns.patterns.bySentiment = bySentiment;
@@ -240,11 +227,11 @@ function analyzeLosses() {
     insights.push(`⏰ Time: Worst hours: ${worstHours}`);
   }
 
-  // BTC correlation
-  const btcWorst = Object.entries(byBtcCorr)
+  // BTC momentum analysis
+  const btcWorst = Object.entries(byBtcMomentum)
     .sort((a, b) => b[1].totalLoss - a[1].totalLoss)[0];
   if (btcWorst[1].count > 0) {
-    insights.push(`₿ BTC Correlation: Most losses when ${btcWorst[0]} (${btcWorst[1].count} trades, ${btcWorst[1].totalLoss.toFixed(2)} USDT)`);
+    insights.push(`₿ BTC Momentum: Most losses during ${btcWorst[0]} (${btcWorst[1].count} trades, ${btcWorst[1].totalLoss.toFixed(2)} USDT)`);
   }
 
   // Sentiment analysis
@@ -272,7 +259,7 @@ function analyzeLosses() {
 
 function generateRecommendations(patterns) {
   const recs = [];
-  const { byRSI, byTrend, byVolatility, bySide, byHour, byBtcCorr, bySentiment } = patterns.patterns;
+  const { byRSI, byTrend, byVolatility, bySide, byHour, byBtcMomentum, bySentiment } = patterns.patterns;
 
   // RSI recommendations
   const rsiLossRates = Object.entries(byRSI).map(([k, v]) => ({
@@ -319,13 +306,13 @@ function generateRecommendations(patterns) {
     recs.push(`⏰ Avoid trading at: ${hours}`);
   }
 
-  // BTC correlation recommendations
-  const btcWorst = Object.entries(byBtcCorr)
+  // BTC momentum recommendations
+  const btcWorstRec = Object.entries(byBtcMomentum)
     .map(([k, v]) => ({ type: k, avg: v.count > 0 ? v.totalLoss / v.count : 0, count: v.count }))
     .sort((a, b) => b.avg - a.avg)[0];
   
-  if (btcWorst.count >= 3 && btcWorst.avg > 5) {
-    recs.push(`₿ Avoid trading when BTC/SOL correlation is ${btcWorst.type}`);
+  if (btcWorstRec.count >= 3 && btcWorstRec.avg > 5) {
+    recs.push(`₿ Avoid trading when BTC momentum is ${btcWorstRec.type}`);
   }
 
   // Sentiment recommendations

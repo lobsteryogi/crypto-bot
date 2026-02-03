@@ -1,7 +1,37 @@
-// Paper trading engine - SQLite version
+/**
+ * Paper Trading Engine - SQLite Version
+ * Simulates trades without real money using SQLite for persistence.
+ * @module PaperTrader
+ */
 import { TradeDB } from './db.js';
 
+/**
+ * @typedef {Object} Position
+ * @property {number} id - Position ID
+ * @property {string} symbol - Trading pair (e.g., 'SOL/USDT')
+ * @property {'LONG'|'SHORT'} side - Position direction
+ * @property {number} entry_price - Entry price
+ * @property {number} amount - Position size
+ * @property {number} leverage - Leverage multiplier
+ * @property {number} margin - Margin used
+ * @property {number} [stop_loss] - Stop loss price
+ * @property {number} [take_profit] - Take profit price
+ */
+
+/**
+ * @typedef {Object} TradeResult
+ * @property {number} pnl - Profit/loss in USDT
+ * @property {number} pnlPercent - Profit/loss percentage
+ * @property {'WIN'|'LOSS'} result - Trade result
+ */
+
 export class PaperTrader {
+  /**
+   * Create a new PaperTrader instance
+   * @param {number} [initialBalance=10000] - Starting balance in USDT
+   * @param {Object} [rsiConfig={}] - RSI optimization config
+   * @param {Object} [hourOptConfig={}] - Hour optimization config
+   */
   constructor(initialBalance = 10000, rsiConfig = {}, hourOptConfig = {}) {
     this.initialBalance = initialBalance;
     this.rsiOptConfig = rsiConfig;
@@ -15,28 +45,43 @@ export class PaperTrader {
     this.loadState();
   }
 
+  /**
+   * Load trading state from SQLite database
+   */
   loadState() {
-    const balance = TradeDB.getBalance();
-    const positions = TradeDB.getPositions();
-    const rsiParams = TradeDB.getRsiParams();
-    const blockedHours = TradeDB.getBlockedHours();
-    
-    console.log(`📂 Loaded state: Balance ${balance.toFixed(2)} USDT, ${positions.length} open positions`);
-    
-    if (rsiParams.oversold !== 35 || rsiParams.overbought !== 65) {
-      console.log(`🎯 Loaded optimized RSI params: Oversold ${rsiParams.oversold}, Overbought ${rsiParams.overbought}`);
-    }
-    
-    if (blockedHours.length > 0) {
-      console.log(`⏰ Loaded learned blocked hours: ${blockedHours.join(', ')} UTC`);
+    try {
+      const balance = TradeDB.getBalance();
+      const positions = TradeDB.getPositions();
+      const rsiParams = TradeDB.getRsiParams();
+      const blockedHours = TradeDB.getBlockedHours();
+      
+      console.log(`📂 Loaded state: Balance ${balance.toFixed(2)} USDT, ${positions.length} open positions`);
+      
+      if (rsiParams.oversold !== 35 || rsiParams.overbought !== 65) {
+        console.log(`🎯 Loaded optimized RSI params: Oversold ${rsiParams.oversold}, Overbought ${rsiParams.overbought}`);
+      }
+      
+      if (blockedHours.length > 0) {
+        console.log(`⏰ Loaded learned blocked hours: ${blockedHours.join(', ')} UTC`);
+      }
+    } catch (error) {
+      console.error('⚠️ Failed to load state from DB:', error.message);
     }
   }
 
-  // Getters
+  /**
+   * Get current balance
+   * @returns {number} Current balance in USDT
+   */
   get balance() {
     return TradeDB.getBalance();
   }
 
+  /**
+   * Get open positions
+   * @param {string} [symbol] - Filter by symbol (optional)
+   * @returns {Position[]} List of open positions
+   */
   getPositions(symbol = null) {
     if (symbol) {
       return TradeDB.getPositionsBySymbol(symbol);
@@ -44,14 +89,27 @@ export class PaperTrader {
     return TradeDB.getPositions();
   }
 
+  /**
+   * Get count of open positions
+   * @param {string} [symbol] - Filter by symbol (optional)
+   * @returns {number} Number of open positions
+   */
   getOpenPositionCount(symbol = null) {
     return this.getPositions(symbol).length;
   }
 
+  /**
+   * Get all completed trades
+   * @returns {Object[]} List of completed trades
+   */
   getTrades() {
     return TradeDB.getAllTrades();
   }
 
+  /**
+   * Get trading statistics
+   * @returns {Object} Trading stats including balance, win rate, etc.
+   */
   getStats() {
     const dbStats = TradeDB.getTradeStats();
     const positions = TradeDB.getPositions();
@@ -85,99 +143,147 @@ export class PaperTrader {
   }
 
   // Trading operations
+  
+  /**
+   * Open a LONG position
+   * @param {string} symbol - Trading pair
+   * @param {number} price - Entry price
+   * @param {number} amount - Position size
+   * @param {string} reason - Trade reason
+   * @param {number} [leverage=1] - Leverage multiplier
+   * @param {number} [stopLoss=null] - Stop loss price
+   * @param {number} [takeProfit=null] - Take profit price
+   * @param {Object} [context={}] - Additional context (rsi, trend, etc.)
+   * @returns {number|null} Position ID or null if failed
+   */
   buy(symbol, price, amount, reason, leverage = 1, stopLoss = null, takeProfit = null, context = {}) {
-    const margin = (amount * price) / leverage;
-    
-    // Check balance
-    if (margin > this.balance) {
-      console.log(`❌ Insufficient balance for ${symbol} LONG: need ${margin.toFixed(2)}, have ${this.balance.toFixed(2)}`);
+    try {
+      const margin = (amount * price) / leverage;
+      
+      // Check balance
+      if (margin > this.balance) {
+        console.log(`❌ Insufficient balance for ${symbol} LONG: need ${margin.toFixed(2)}, have ${this.balance.toFixed(2)}`);
+        return null;
+      }
+      
+      // Deduct margin
+      const newBalance = this.balance - margin;
+      TradeDB.setBalance(newBalance);
+      
+      // Open position
+      const positionId = TradeDB.openPosition({
+        symbol,
+        side: 'LONG',
+        entryPrice: price,
+        amount,
+        leverage,
+        margin,
+        stopLoss,
+        takeProfit,
+        reason,
+        rsi: context.rsi,
+        trend: context.trend,
+        volatilityMultiplier: context.volatilityMultiplier,
+      });
+      
+      console.log(`🟢 LONG: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${margin.toFixed(2)} USDT)`);
+      
+      return positionId;
+    } catch (error) {
+      console.error(`❌ Failed to open LONG position: ${error.message}`);
       return null;
     }
-    
-    // Deduct margin
-    const newBalance = this.balance - margin;
-    TradeDB.setBalance(newBalance);
-    
-    // Open position
-    const positionId = TradeDB.openPosition({
-      symbol,
-      side: 'LONG',
-      entryPrice: price,
-      amount,
-      leverage,
-      margin,
-      stopLoss,
-      takeProfit,
-      reason,
-      rsi: context.rsi,
-      trend: context.trend,
-      volatilityMultiplier: context.volatilityMultiplier,
-    });
-    
-    console.log(`🟢 LONG: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${margin.toFixed(2)} USDT)`);
-    
-    return positionId;
   }
 
+  /**
+   * Open a SHORT position
+   * @param {string} symbol - Trading pair
+   * @param {number} price - Entry price
+   * @param {number} amount - Position size
+   * @param {string} reason - Trade reason
+   * @param {number} [leverage=1] - Leverage multiplier
+   * @param {number} [stopLoss=null] - Stop loss price
+   * @param {number} [takeProfit=null] - Take profit price
+   * @param {Object} [context={}] - Additional context (rsi, trend, etc.)
+   * @returns {number|null} Position ID or null if failed
+   */
   short(symbol, price, amount, reason, leverage = 1, stopLoss = null, takeProfit = null, context = {}) {
-    const margin = (amount * price) / leverage;
-    
-    // Check balance
-    if (margin > this.balance) {
-      console.log(`❌ Insufficient balance for ${symbol} SHORT: need ${margin.toFixed(2)}, have ${this.balance.toFixed(2)}`);
+    try {
+      const margin = (amount * price) / leverage;
+      
+      // Check balance
+      if (margin > this.balance) {
+        console.log(`❌ Insufficient balance for ${symbol} SHORT: need ${margin.toFixed(2)}, have ${this.balance.toFixed(2)}`);
+        return null;
+      }
+      
+      // Deduct margin
+      const newBalance = this.balance - margin;
+      TradeDB.setBalance(newBalance);
+      
+      // Open position
+      const positionId = TradeDB.openPosition({
+        symbol,
+        side: 'SHORT',
+        entryPrice: price,
+        amount,
+        leverage,
+        margin,
+        stopLoss,
+        takeProfit,
+        reason,
+        rsi: context.rsi,
+        trend: context.trend,
+        volatilityMultiplier: context.volatilityMultiplier,
+      });
+      
+      console.log(`🔴 SHORT: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${margin.toFixed(2)} USDT)`);
+      
+      return positionId;
+    } catch (error) {
+      console.error(`❌ Failed to open SHORT position: ${error.message}`);
       return null;
     }
-    
-    // Deduct margin
-    const newBalance = this.balance - margin;
-    TradeDB.setBalance(newBalance);
-    
-    // Open position
-    const positionId = TradeDB.openPosition({
-      symbol,
-      side: 'SHORT',
-      entryPrice: price,
-      amount,
-      leverage,
-      margin,
-      stopLoss,
-      takeProfit,
-      reason,
-      rsi: context.rsi,
-      trend: context.trend,
-      volatilityMultiplier: context.volatilityMultiplier,
-    });
-    
-    console.log(`🔴 SHORT: ${amount.toFixed(6)} ${symbol} @ ${price.toFixed(2)} (${leverage}x, margin: ${margin.toFixed(2)} USDT)`);
-    
-    return positionId;
   }
 
+  /**
+   * Close a position
+   * @param {number} positionId - Position ID to close
+   * @param {number} exitPrice - Exit price
+   * @param {string} exitReason - Reason for closing
+   * @param {Object} [context={}] - Additional context
+   * @returns {TradeResult|null} Trade result or null if failed
+   */
   closePosition(positionId, exitPrice, exitReason, context = {}) {
-    // Get position from DB
-    const position = TradeDB.raw.prepare('SELECT * FROM positions WHERE id = ?').get(positionId);
-    if (!position) {
-      console.log(`❌ Position ${positionId} not found`);
+    try {
+      // Get position from DB
+      const position = TradeDB.raw.prepare('SELECT * FROM positions WHERE id = ?').get(positionId);
+      if (!position) {
+        console.log(`❌ Position ${positionId} not found`);
+        return null;
+      }
+      
+      // Close and get result
+      const result = TradeDB.closePosition(positionId, {
+        exitPrice,
+        reason: exitReason,
+        ...context,
+      });
+      
+      if (!result) return null;
+      
+      // Return margin + profit to balance
+      const newBalance = this.balance + position.margin + result.pnl;
+      TradeDB.setBalance(newBalance);
+      
+      const emoji = result.pnl > 0 ? '✅' : '❌';
+      console.log(`${emoji} Closed ${position.side} ${position.symbol}: ${result.pnl > 0 ? '+' : ''}${result.pnl.toFixed(2)} USDT (${result.pnlPercent.toFixed(2)}%)`);
+      
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to close position ${positionId}: ${error.message}`);
       return null;
     }
-    
-    // Close and get result
-    const result = TradeDB.closePosition(positionId, {
-      exitPrice,
-      reason: exitReason,
-      ...context,
-    });
-    
-    if (!result) return null;
-    
-    // Return margin + profit to balance
-    const newBalance = this.balance + position.margin + result.pnl;
-    TradeDB.setBalance(newBalance);
-    
-    const emoji = result.pnl > 0 ? '✅' : '❌';
-    console.log(`${emoji} Closed ${position.side} ${position.symbol}: ${result.pnl > 0 ? '+' : ''}${result.pnl.toFixed(2)} USDT (${result.pnlPercent.toFixed(2)}%)`);
-    
-    return result;
   }
 
   // Alias for closePosition (used by trader.js)

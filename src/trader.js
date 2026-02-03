@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { Strategies } from './strategies.js';
 import { PaperTrader } from './paper-trader-sqlite.js';
 import { getSentiment } from './sentiment.js';
+import { checkSentimentAlerts } from './sentiment-monitor.js';
 import { PositionSizer } from './position-sizer.js';
 import { MartingaleSizer } from './martingale-sizer.js';
 import { Indicators } from './indicators.js';
@@ -214,7 +215,33 @@ async function runTradingCycle(symbol) {
     return; // Stop processing
   }
   
-  // 2.6. Get current stats for position sizing
+  // 2.6. Check sentiment alerts (every cycle for first symbol only to avoid spam)
+  if (config.trading && config.trading.symbols && symbol === config.trading.symbols[0]) {
+    try {
+      const sentimentCheck = await checkSentimentAlerts(symbol);
+      
+      // Log any alerts
+      if (sentimentCheck.alerts && sentimentCheck.alerts.length > 0) {
+        for (const alert of sentimentCheck.alerts) {
+          log(`🚨 SENTIMENT ALERT [${alert.severity}]: ${alert.message}`, 'warn');
+          log(`   → ${alert.action}`, 'warn');
+        }
+      }
+      
+      // Pause trading if HIGH severity alert
+      if (sentimentCheck.pauseDecision && sentimentCheck.pauseDecision.pause) {
+        log(`⏸️ ${sentimentCheck.pauseDecision.message}`, 'warn');
+        log(`   Pausing for ${sentimentCheck.pauseDecision.duration} minutes`, 'warn');
+        // TODO: Implement pause mechanism similar to drawdown protection
+        // For now, just log and skip this cycle
+        return;
+      }
+    } catch (sentimentError) {
+      log(`⚠️ Sentiment check failed: ${sentimentError.message}`, 'error');
+    }
+  }
+  
+  // 2.7. Get current stats for position sizing
   const stats = trader.getStats();
   
   // 3. Get strategy signal
@@ -430,6 +457,7 @@ async function main() {
         await runTradingCycle(symbol);
       } catch (e) {
         log(`Error running cycle for ${symbol}: ${e.message}`, 'error');
+        log(e.stack, 'error');
       }
     }
     const stats = trader.getStats();

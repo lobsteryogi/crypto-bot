@@ -1,4 +1,8 @@
-// SQLite Database for Crypto Bot
+/**
+ * SQLite Database for Crypto Bot
+ * Handles all database operations for positions, trades, and state.
+ * @module TradeDB
+ */
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -156,36 +160,76 @@ const stmts = {
   clearBlockedHours: db.prepare('DELETE FROM blocked_hours'),
 };
 
-// Database API
+/**
+ * Database API for crypto trading bot
+ * @namespace TradeDB
+ */
 export const TradeDB = {
-  // State management
+  /**
+   * Get current trading balance
+   * @returns {number} Current balance in USDT
+   */
   getBalance() {
     const row = stmts.getState.get('balance');
     return row ? parseFloat(row.value) : 10000;
   },
   
+  /**
+   * Set trading balance
+   * @param {number} balance - New balance in USDT
+   */
   setBalance(balance) {
     stmts.setState.run('balance', balance.toString());
   },
   
+  /**
+   * Get current Martingale streak count
+   * @returns {number} Current streak count
+   */
   getMartingaleStreak() {
     const row = stmts.getState.get('martingale_streak');
     return row ? parseInt(row.value) : 0;
   },
   
+  /**
+   * Set Martingale streak count
+   * @param {number} streak - New streak count
+   */
   setMartingaleStreak(streak) {
     stmts.setState.run('martingale_streak', streak.toString());
   },
   
-  // Positions
+  /**
+   * Get all open positions
+   * @returns {Object[]} Array of position objects
+   */
   getPositions() {
     return stmts.getPositions.all();
   },
   
+  /**
+   * Get positions for a specific trading pair
+   * @param {string} symbol - Trading pair (e.g., 'SOL/USDT')
+   * @returns {Object[]} Array of position objects
+   */
   getPositionsBySymbol(symbol) {
     return stmts.getPositionsBySymbol.all(symbol);
   },
   
+  /**
+   * Open a new position
+   * @param {Object} position - Position data
+   * @param {string} position.symbol - Trading pair
+   * @param {'LONG'|'SHORT'} position.side - Position direction
+   * @param {number} position.entryPrice - Entry price
+   * @param {number} position.amount - Position size
+   * @param {number} [position.leverage=1] - Leverage multiplier
+   * @param {number} [position.margin] - Margin used
+   * @param {number} [position.stopLoss] - Stop loss price
+   * @param {number} [position.takeProfit] - Take profit price
+   * @param {string} [position.reason] - Trade reason
+   * @returns {number} New position ID
+   */
   openPosition(position) {
     const result = stmts.insertPosition.run({
       symbol: position.symbol,
@@ -204,6 +248,15 @@ export const TradeDB = {
     return result.lastInsertRowid;
   },
   
+  /**
+   * Update position data (for trailing stops, etc.)
+   * @param {number} id - Position ID
+   * @param {Object} updates - Fields to update
+   * @param {number} [updates.highestPrice] - New highest price
+   * @param {number} [updates.lowestPrice] - New lowest price
+   * @param {boolean} [updates.trailingActive] - Trailing stop active flag
+   * @param {number} [updates.stopLoss] - New stop loss price
+   */
   updatePosition(id, updates) {
     stmts.updatePosition.run({
       id,
@@ -214,6 +267,14 @@ export const TradeDB = {
     });
   },
   
+  /**
+   * Close a position and record the trade
+   * @param {number} positionId - Position ID to close
+   * @param {Object} exitData - Exit data
+   * @param {number} exitData.exitPrice - Exit price
+   * @param {string} [exitData.reason] - Exit reason
+   * @returns {Object|null} Trade result with pnl, pnlPercent, result
+   */
   closePosition(positionId, exitData) {
     const position = db.prepare('SELECT * FROM positions WHERE id = ?').get(positionId);
     if (!position) return null;
