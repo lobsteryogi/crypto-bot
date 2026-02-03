@@ -40,7 +40,7 @@
 - [x] Integrate sentiment score into trading decisions
 - [x] **Alert on extreme sentiment shifts** ✅ Monitor + pause on HIGH severity (3 Feb 2026)
 - [x] Show Fear & Greed Index on dashboard
-- [ ] Show SOL-specific sentiment (Twitter/X mentions)
+- [x] **Show SOL-specific sentiment (Twitter/X mentions)** ✅ Scrape cfgi.io news + combine with F&G (3 Feb 2026)
 
 ## 🧠 Self-Learning
 - [x] Auto-adjust RSI thresholds based on win rate
