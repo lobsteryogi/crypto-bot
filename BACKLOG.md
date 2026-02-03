@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** กำลังทำ TradingView lightweight-charts refactor...
+> **📅 Next Task:** กำลังทำ Win rate by day of week chart...
 > 
-> **🕐 Last Updated:** 13:44
+> **🕐 Last Updated:** 13:49
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -20,7 +20,7 @@
 - [x] Alert bar showing changelog (recent bot updates/changes)
 - [x] Backlog section showing pending/completed items
 - [x] Real-time price chart with indicators
-- [ ] **Refactor chart to use TradingView lightweight-charts**
+- [x] **Refactor chart to use TradingView lightweight-charts**
 - [x] Trade history table with filters
 - [x] Win rate by hour of day chart
 - [ ] Win rate by day of week chart
@@ -30,6 +30,7 @@
 - [ ] Alert/notification settings
 - [ ] Dark/light theme toggle
 - [ ] Mobile-responsive improvements
+- [ ] Position size calculator widget
 
 ## 📊 Sentiment Analysis
 - [x] Crypto sentiment analysis for traded coins (news, social, Fear & Greed Index)

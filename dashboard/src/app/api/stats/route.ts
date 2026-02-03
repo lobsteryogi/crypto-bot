@@ -94,6 +94,36 @@ export async function GET(request: NextRequest) {
       return 0;
     });
 
+    // --- 1.5. Win Rate by Day of Week ---
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayStats = Array(7).fill(0).map((_, i) => ({ 
+        day: daysOfWeek[i], 
+        trades: 0, 
+        wins: 0,
+        winRate: 0
+    }));
+
+    trades.forEach((t: any) => {
+        if (t.closeTime) {
+            const date = new Date(t.closeTime);
+            const dayIndex = date.getDay(); // 0 = Sunday
+            dayStats[dayIndex].trades++;
+            if (t.profit > 0) {
+                dayStats[dayIndex].wins++;
+            }
+        }
+    });
+
+    // Calculate percentages
+    dayStats.forEach(stat => {
+        if (stat.trades > 0) {
+            stat.winRate = parseFloat(((stat.wins / stat.trades) * 100).toFixed(1));
+        }
+    });
+
+    // Rotate to Mon-Sun (Sun is index 0 in getDay(), so move it to end)
+    const winRateByDay = [...dayStats.slice(1), dayStats[0]];
+
     // --- 2. Fetch Recent Cycles ---
     const logsDir = path.join(rootDir, 'logs');
     const cycleLogPath = path.join(logsDir, 'cycles.jsonl');
@@ -156,6 +186,7 @@ export async function GET(request: NextRequest) {
       trades: filteredTrades,
       allTradesCount: trades.length, 
       positions,
+      winRateByDay,
       recentCycles,
       changelog,
       backlog,

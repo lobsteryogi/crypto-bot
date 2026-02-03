@@ -3,8 +3,16 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { TradeHistoryTable } from '../components/TradeHistoryTable';
 import { TradingViewChart, ChartData } from '../components/TradingViewChart';
+import { WinRateByDayChart } from '../components/WinRateByDayChart';
 
 // --- Types ---
+
+interface DayStat {
+  day: string;
+  trades: number;
+  wins: number;
+  winRate: number;
+}
 
 interface Stats {
   totalTrades: number;
@@ -61,6 +69,7 @@ interface BotData {
   trades: Trade[];
   positions: Position[];
   recentCycles?: Cycle[];
+  winRateByDay?: DayStat[];
   stats: Stats;
   changelog: string[];
   backlog: Backlog;
@@ -423,12 +432,15 @@ export default function Dashboard() {
         <ChartSection />
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
              <PLChart trades={data.trades} />
           </div>
           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
              <HourlyWinRateChart trades={data.trades} />
+          </div>
+          <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+             <WinRateByDayChart data={data.winRateByDay || []} />
           </div>
         </div>
 

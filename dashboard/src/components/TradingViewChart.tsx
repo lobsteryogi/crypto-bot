@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from 'react';
-import { createChart, ColorType, CrosshairMode, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, ISeriesApi, Time, UTCTimestamp, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 
 export interface ChartData {
   time: number; // Unix timestamp in seconds
@@ -74,8 +74,8 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
 
     chartInstance.current = chart;
 
-    // Candlesticks
-    candleSeries.current = chart.addCandlestickSeries({
+    // Candlesticks (v5 API)
+    candleSeries.current = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e', // green-500
       downColor: '#ef4444', // red-500
       borderVisible: false,
@@ -83,8 +83,8 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
       wickDownColor: '#ef4444',
     });
 
-    // Volume
-    volumeSeries.current = chart.addHistogramSeries({
+    // Volume (v5 API)
+    volumeSeries.current = chart.addSeries(HistogramSeries, {
       priceFormat: {
         type: 'volume',
       },
@@ -97,15 +97,15 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
       },
     });
 
-    // Moving Averages
-    ma5Series.current = chart.addLineSeries({
+    // Moving Averages (v5 API)
+    ma5Series.current = chart.addSeries(LineSeries, {
       color: '#facc15', // yellow
       lineWidth: 2,
       priceLineVisible: false,
       title: 'SMA 5',
     });
 
-    ma13Series.current = chart.addLineSeries({
+    ma13Series.current = chart.addSeries(LineSeries, {
       color: '#3b82f6', // blue
       lineWidth: 2,
       priceLineVisible: false,
@@ -125,7 +125,7 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
         horzLines: { color: '#374151' },
       },
       timeScale: {
-        visible: false, // Sync with main chart usually involves more complex handling, keeping simple for now
+        visible: false,
       },
       handleScale: false,
       handleScroll: false,
@@ -133,19 +133,18 @@ export const TradingViewChart = ({ data, colors = {} }: Props) => {
     
     rsiChartInstance.current = rsiChart;
 
-    rsiSeries.current = rsiChart.addLineSeries({
+    rsiSeries.current = rsiChart.addSeries(LineSeries, {
       color: '#c084fc', // purple
       lineWidth: 2,
     });
     
-    // RSI Levels
-    const overbought = rsiChart.addLineSeries({ color: '#ef4444', lineWidth: 1, lineStyle: 2, title: '70' });
-    const oversold = rsiChart.addLineSeries({ color: '#22c55e', lineWidth: 1, lineStyle: 2, title: '30' });
+    // RSI Levels (v5 API)
+    const overbought = rsiChart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, lineStyle: 2, title: '70' });
+    const oversold = rsiChart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, lineStyle: 2, title: '30' });
     rsiOverboughtLine.current = overbought;
     rsiOversoldLine.current = oversold;
 
     // --- Synchronization (Basic) ---
-    // For true sync we need to subscribe to VisibleTimeRangeChange
     chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
         if (range && rsiChartInstance.current) {
             rsiChartInstance.current.timeScale().setVisibleRange(range);
