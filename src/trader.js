@@ -29,7 +29,7 @@ function log(message, type = 'info') {
   fs.appendFileSync(logFile, logMessage + '\n');
 }
 
-// Fetch OHLCV candles
+// Fetch OHLCV candles for single timeframe
 async function fetchCandles(symbol, timeframe, limit = 100) {
   try {
     const ohlcv = await exchange.fetchOHLCV(symbol, timeframe, undefined, limit);
@@ -47,19 +47,54 @@ async function fetchCandles(symbol, timeframe, limit = 100) {
   }
 }
 
+// Fetch candles for multiple timeframes (for multi-timeframe analysis)
+async function fetchMultiTimeframeCandles(symbol, timeframes = ['1m', '5m', '15m'], limits = { '1m': 100, '5m': 60, '15m': 60 }) {
+  const results = {};
+  
+  for (const tf of timeframes) {
+    const limit = limits[tf] || 100;
+    const candles = await fetchCandles(symbol, tf, limit);
+    if (!candles) {
+      log(`Failed to fetch ${tf} candles`, 'warn');
+      return null;
+    }
+    results[tf] = candles;
+  }
+  
+  return results;
+}
+
 // Run one trading cycle
 async function runTradingCycle() {
   log('='.repeat(60));
   log('🔄 Starting trading cycle...');
   
-  // 1. Fetch latest candles
-  const candles = await fetchCandles(config.symbol, config.timeframe);
-  if (!candles || candles.length < 30) {
-    log('Not enough candle data', 'warn');
-    return;
+  // 1. Fetch candles (single or multi-timeframe based on strategy)
+  const isMultiTF = Strategies.isMultiTimeframe(config.strategy.name);
+  let candles;
+  let multiCandles;
+  let currentPrice;
+  
+  if (isMultiTF) {
+    // Multi-timeframe strategy: fetch 1m, 5m, 15m
+    log('📊 Using multi-timeframe analysis (1m + 5m + 15m)');
+    multiCandles = await fetchMultiTimeframeCandles(config.symbol);
+    if (!multiCandles) {
+      log('Failed to fetch multi-timeframe data', 'warn');
+      return;
+    }
+    candles = multiCandles['1m']; // Use 1m for price and position management
+    currentPrice = candles[candles.length - 1].close;
+  } else {
+    // Single timeframe strategy
+    candles = await fetchCandles(config.symbol, config.timeframe);
+    if (!candles || candles.length < 30) {
+      log('Not enough candle data', 'warn');
+      return;
+    }
+    currentPrice = candles[candles.length - 1].close;
   }
   
-  const currentPrice = candles[candles.length - 1].close;
   log(`📊 ${config.symbol} Current Price: ${currentPrice.toFixed(2)} USDT`);
   
   // 2. Check stop loss / take profit / trailing stop for open positions
@@ -76,9 +111,19 @@ async function runTradingCycle() {
   // 2.5. Get current stats for position sizing
   const stats = trader.getStats();
   
-  // 3. Get strategy signal
+  // 3. Get strategy signal (pass multi-candles or single candles based on strategy)
   const strategy = Strategies.getStrategy(config.strategy.name);
-  let signal = strategy(candles, config.strategy.params);
+  let signal;
+  
+  if (isMultiTF) {
+    signal = strategy(multiCandles, config.strategy.params);
+    if (signal.indicators) {
+      log(`   └─ 15m: ${signal.indicators.trend15m} | 5m: ${signal.indicators.momentum5m} | 1m: RSI ${signal.indicators.rsi1m?.toFixed(1)}`);
+    }
+  } else {
+    signal = strategy(candles, config.strategy.params);
+  }
+  
   log(`📈 Strategy Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
   
   // 3.5. Apply sentiment analysis adjustment

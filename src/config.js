@@ -33,21 +33,37 @@ export const config = {
     },
   },
   
-  // Strategy settings - more aggressive for frequent trades
+  // Strategy settings - multi-timeframe analysis
   strategy: {
-    name: 'rsi_ma_crossover',
-    version: 2,
+    name: 'multi_timeframe',  // Changed from rsi_ma_crossover
+    version: 3,
     params: {
+      // 15m trend params
+      trendFastPeriod: 20,
+      trendSlowPeriod: 50,
+      // 5m momentum params
+      macdFast: 12,
+      macdSlow: 26,
+      macdSignal: 9,
+      // 1m entry params
       rsiPeriod: 14,
-      rsiOversold: 40, // Less strict (was 30)
-      rsiOverbought: 60, // Less strict (was 70)
-      maFastPeriod: 5, // Faster MA (was 9)
-      maSlowPeriod: 13, // Faster MA (was 21)
+      rsiOversold: 35,
+      rsiOverbought: 65,
+      // Require all 3 timeframes to align for entry
+      requireAllTimeframes: true,
     }
   },
   
-  // Timeframe - shorter for more signals
-  timeframe: '1m', // Changed from 5m to 1m
+  // Available strategies reference:
+  // - rsi_ma_crossover: RSI + MA crossover (original)
+  // - simple_rsi: RSI only
+  // - macd: MACD crossover
+  // - bollinger_bands: Bollinger band touches
+  // - multi_indicator: RSI + MACD + BB confluence
+  // - multi_timeframe: 15m trend + 5m momentum + 1m entry (NEW)
+  
+  // Timeframe - used by single-TF strategies (multi_timeframe uses 1m/5m/15m)
+  timeframe: '1m',
   
   // Paths
   paths: {

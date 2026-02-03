@@ -473,6 +473,228 @@ export class Strategies {
     return adjusted;
   }
 
+  /**
+   * Multi-Timeframe Analysis Strategy
+   * Uses higher timeframes for trend direction, lower timeframe for entry
+   * 
+   * Logic:
+   * - 15m: Primary trend direction (EMA 20 vs EMA 50)
+   * - 5m: Momentum confirmation (MACD histogram direction)
+   * - 1m: Entry trigger (RSI oversold/overbought)
+   * 
+   * Only trades in direction of higher timeframe trend
+   * 
+   * @param {Object} multiCandles - Object with candles for each timeframe: { '1m': [], '5m': [], '15m': [] }
+   * @param {Object} params - Strategy parameters
+   * @returns {Object} Trading signal
+   */
+  static multiTimeframe(multiCandles, params) {
+    const {
+      // Trend params (15m)
+      trendFastPeriod = 20,
+      trendSlowPeriod = 50,
+      // Momentum params (5m)
+      macdFast = 12,
+      macdSlow = 26,
+      macdSignal = 9,
+      // Entry params (1m)
+      rsiPeriod = 14,
+      rsiOversold = 35,
+      rsiOverbought = 65,
+      // Confluence
+      requireAllTimeframes = true,
+    } = params;
+
+    // Extract candles for each timeframe
+    const candles1m = multiCandles['1m'];
+    const candles5m = multiCandles['5m'];
+    const candles15m = multiCandles['15m'];
+
+    if (!candles1m || !candles5m || !candles15m) {
+      return { signal: 'hold', reason: 'Missing timeframe data for multi-TF analysis' };
+    }
+
+    if (candles15m.length < trendSlowPeriod + 5) {
+      return { signal: 'hold', reason: 'Insufficient 15m data for trend analysis' };
+    }
+
+    // ===== 15M TREND ANALYSIS =====
+    const closes15m = candles15m.map(c => c.close);
+    const emaFast15m = Indicators.ema(closes15m, trendFastPeriod);
+    const emaSlow15m = Indicators.ema(closes15m, trendSlowPeriod);
+    
+    const lastIdx15m = closes15m.length - 1;
+    const currentEmaFast15m = emaFast15m[lastIdx15m];
+    const currentEmaSlow15m = emaSlow15m[lastIdx15m];
+    const currentClose15m = closes15m[lastIdx15m];
+
+    let trend15m = 'neutral';
+    let trendStrength = 0;
+    
+    if (currentEmaFast15m !== null && currentEmaSlow15m !== null) {
+      const emaDiff = ((currentEmaFast15m - currentEmaSlow15m) / currentEmaSlow15m) * 100;
+      
+      if (currentEmaFast15m > currentEmaSlow15m && currentClose15m > currentEmaFast15m) {
+        trend15m = 'bullish';
+        trendStrength = Math.min(100, Math.abs(emaDiff) * 20);
+      } else if (currentEmaFast15m < currentEmaSlow15m && currentClose15m < currentEmaFast15m) {
+        trend15m = 'bearish';
+        trendStrength = Math.min(100, Math.abs(emaDiff) * 20);
+      } else if (currentEmaFast15m > currentEmaSlow15m) {
+        trend15m = 'weak_bullish';
+        trendStrength = Math.min(50, Math.abs(emaDiff) * 10);
+      } else if (currentEmaFast15m < currentEmaSlow15m) {
+        trend15m = 'weak_bearish';
+        trendStrength = Math.min(50, Math.abs(emaDiff) * 10);
+      }
+    }
+
+    // ===== 5M MOMENTUM ANALYSIS =====
+    const closes5m = candles5m.map(c => c.close);
+    const macd5m = Indicators.macd(closes5m, macdFast, macdSlow, macdSignal);
+    
+    const lastIdx5m = closes5m.length - 1;
+    const prevIdx5m = lastIdx5m - 1;
+    const currentHistogram5m = macd5m.histogram[lastIdx5m];
+    const prevHistogram5m = macd5m.histogram[prevIdx5m];
+
+    let momentum5m = 'neutral';
+    let momentumStrength = 0;
+
+    if (currentHistogram5m !== null && prevHistogram5m !== null) {
+      if (currentHistogram5m > 0 && currentHistogram5m > prevHistogram5m) {
+        momentum5m = 'bullish';
+        momentumStrength = Math.min(100, Math.abs(currentHistogram5m) * 500 + 30);
+      } else if (currentHistogram5m < 0 && currentHistogram5m < prevHistogram5m) {
+        momentum5m = 'bearish';
+        momentumStrength = Math.min(100, Math.abs(currentHistogram5m) * 500 + 30);
+      } else if (currentHistogram5m > 0) {
+        momentum5m = 'weak_bullish';
+        momentumStrength = Math.min(50, Math.abs(currentHistogram5m) * 300);
+      } else if (currentHistogram5m < 0) {
+        momentum5m = 'weak_bearish';
+        momentumStrength = Math.min(50, Math.abs(currentHistogram5m) * 300);
+      }
+    }
+
+    // ===== 1M ENTRY ANALYSIS =====
+    const closes1m = candles1m.map(c => c.close);
+    const rsi1m = Indicators.rsi(closes1m, rsiPeriod);
+    
+    const lastIdx1m = closes1m.length - 1;
+    const currentRsi1m = rsi1m[lastIdx1m];
+    const currentPrice = closes1m[lastIdx1m];
+
+    let entry1m = 'neutral';
+    let entryStrength = 0;
+
+    if (currentRsi1m !== null) {
+      if (currentRsi1m < rsiOversold) {
+        entry1m = 'oversold';
+        entryStrength = Math.min(100, (rsiOversold - currentRsi1m) * 3 + 40);
+      } else if (currentRsi1m > rsiOverbought) {
+        entry1m = 'overbought';
+        entryStrength = Math.min(100, (currentRsi1m - rsiOverbought) * 3 + 40);
+      }
+    }
+
+    // ===== BUILD INDICATORS OBJECT =====
+    const indicators = {
+      trend15m,
+      trendStrength,
+      emaFast15m: currentEmaFast15m,
+      emaSlow15m: currentEmaSlow15m,
+      momentum5m,
+      momentumStrength,
+      histogram5m: currentHistogram5m,
+      entry1m,
+      entryStrength,
+      rsi1m: currentRsi1m,
+      price: currentPrice,
+    };
+
+    // ===== DECISION LOGIC =====
+    const reasons = [];
+
+    // BUY: Bullish trend + Bullish momentum + Oversold entry
+    const bullishTrend = trend15m === 'bullish' || trend15m === 'weak_bullish';
+    const bullishMomentum = momentum5m === 'bullish' || momentum5m === 'weak_bullish';
+    const oversoldEntry = entry1m === 'oversold';
+
+    // SELL: Bearish trend + Bearish momentum + Overbought entry  
+    const bearishTrend = trend15m === 'bearish' || trend15m === 'weak_bearish';
+    const bearishMomentum = momentum5m === 'bearish' || momentum5m === 'weak_bearish';
+    const overboughtEntry = entry1m === 'overbought';
+
+    if (requireAllTimeframes) {
+      // Strict mode: require all 3 timeframes to align
+      if (bullishTrend && bullishMomentum && oversoldEntry) {
+        reasons.push(`15m: ${trend15m} (str: ${trendStrength.toFixed(0)})`);
+        reasons.push(`5m: ${momentum5m} (hist: ${currentHistogram5m?.toFixed(4)})`);
+        reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)} oversold`);
+        
+        const confidence = Math.round((trendStrength + momentumStrength + entryStrength) / 3);
+        return {
+          signal: 'buy',
+          reason: `MTF BUY: ${reasons.join(' | ')}`,
+          confidence: Math.min(95, confidence),
+          indicators,
+        };
+      }
+
+      if (bearishTrend && bearishMomentum && overboughtEntry) {
+        reasons.push(`15m: ${trend15m} (str: ${trendStrength.toFixed(0)})`);
+        reasons.push(`5m: ${momentum5m} (hist: ${currentHistogram5m?.toFixed(4)})`);
+        reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)} overbought`);
+        
+        const confidence = Math.round((trendStrength + momentumStrength + entryStrength) / 3);
+        return {
+          signal: 'sell',
+          reason: `MTF SELL: ${reasons.join(' | ')}`,
+          confidence: Math.min(95, confidence),
+          indicators,
+        };
+      }
+    } else {
+      // Relaxed mode: 2 out of 3 is enough
+      let buyScore = (bullishTrend ? 1 : 0) + (bullishMomentum ? 1 : 0) + (oversoldEntry ? 1 : 0);
+      let sellScore = (bearishTrend ? 1 : 0) + (bearishMomentum ? 1 : 0) + (overboughtEntry ? 1 : 0);
+
+      if (buyScore >= 2 && buyScore > sellScore) {
+        if (bullishTrend) reasons.push(`15m: ${trend15m}`);
+        if (bullishMomentum) reasons.push(`5m: ${momentum5m}`);
+        if (oversoldEntry) reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)}`);
+        
+        return {
+          signal: 'buy',
+          reason: `MTF BUY (${buyScore}/3): ${reasons.join(' | ')}`,
+          confidence: Math.min(85, 50 + buyScore * 15),
+          indicators,
+        };
+      }
+
+      if (sellScore >= 2 && sellScore > buyScore) {
+        if (bearishTrend) reasons.push(`15m: ${trend15m}`);
+        if (bearishMomentum) reasons.push(`5m: ${momentum5m}`);
+        if (overboughtEntry) reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)}`);
+        
+        return {
+          signal: 'sell',
+          reason: `MTF SELL (${sellScore}/3): ${reasons.join(' | ')}`,
+          confidence: Math.min(85, 50 + sellScore * 15),
+          indicators,
+        };
+      }
+    }
+
+    // No signal
+    return {
+      signal: 'hold',
+      reason: `MTF: No alignment (15m: ${trend15m}, 5m: ${momentum5m}, 1m: ${entry1m})`,
+      indicators,
+    };
+  }
+
   // Get strategy function by name
   static getStrategy(name) {
     const strategies = {
@@ -481,7 +703,13 @@ export class Strategies {
       'macd': this.macdStrategy.bind(this),
       'bollinger_bands': this.bollingerBands.bind(this),
       'multi_indicator': this.multiIndicator.bind(this),
+      'multi_timeframe': this.multiTimeframe.bind(this),
     };
     return strategies[name] || strategies['rsi_ma_crossover'];
+  }
+
+  // Check if strategy requires multi-timeframe data
+  static isMultiTimeframe(name) {
+    return name === 'multi_timeframe';
   }
 }
