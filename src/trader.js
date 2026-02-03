@@ -46,7 +46,7 @@ async function fetchCandles(symbol, timeframe, limit = 200) {
       volume: c[5],
     }));
   } catch (error) {
-    log(`Error fetching candles: ${error.message}`, 'error');
+    log(`Error fetching candles for ${symbol}: ${error.message}`, 'error');
     return null;
   }
 }
@@ -59,7 +59,7 @@ async function fetchMultiTimeframeCandles(symbol, timeframes = ['1m', '5m', '15m
     const limit = limits[tf] || 200;
     const candles = await fetchCandles(symbol, tf, limit);
     if (!candles) {
-      log(`Failed to fetch ${tf} candles`, 'warn');
+      log(`Failed to fetch ${tf} candles for ${symbol}`, 'warn');
       return null;
     }
     results[tf] = candles;
@@ -68,10 +68,12 @@ async function fetchMultiTimeframeCandles(symbol, timeframes = ['1m', '5m', '15m
   return results;
 }
 
-// Run one trading cycle
-async function runTradingCycle() {
-  log('='.repeat(60));
-  log('🔄 Starting trading cycle...');
+// Run one trading cycle for a specific symbol
+async function runTradingCycle(symbol) {
+  // Use symbol specific logging prefix if possible, or just include in message
+  const logPrefix = `[${symbol}]`;
+  
+  log(`${logPrefix} 🔄 Starting analysis...`);
   
   // 1. Fetch candles (single or multi-timeframe based on strategy)
   const isMultiTF = Strategies.isMultiTimeframe(config.strategy.name);
@@ -81,31 +83,30 @@ async function runTradingCycle() {
   
   if (isMultiTF) {
     // Multi-timeframe strategy: fetch 1m, 5m, 15m
-    log('📊 Using multi-timeframe analysis (1m + 5m + 15m)');
-    multiCandles = await fetchMultiTimeframeCandles(config.symbol);
+    multiCandles = await fetchMultiTimeframeCandles(symbol);
     if (!multiCandles) {
-      log('Failed to fetch multi-timeframe data', 'warn');
+      log(`${logPrefix} Failed to fetch multi-timeframe data`, 'warn');
       return;
     }
     candles = multiCandles['1m']; // Use 1m for price and position management
     currentPrice = candles[candles.length - 1].close;
   } else {
     // Single timeframe strategy
-    candles = await fetchCandles(config.symbol, config.timeframe);
+    candles = await fetchCandles(symbol, config.timeframe);
     if (!candles || candles.length < 30) {
-      log('Not enough candle data', 'warn');
+      log(`${logPrefix} Not enough candle data`, 'warn');
       return;
     }
     currentPrice = candles[candles.length - 1].close;
   }
   
-  log(`📊 ${config.symbol} Current Price: ${currentPrice.toFixed(2)} USDT`);
+  log(`${logPrefix} 📊 Current Price: ${currentPrice.toFixed(2)} USDT`);
 
-  // 1.2 Fetch BTC Momentum
+  // 1.2 Fetch BTC Momentum (Global metric, but we log it per symbol context)
   let btcMomentum = 'neutral';
   if (config.trading.btcCorrelation && config.trading.btcCorrelation.enabled) {
     btcMomentum = await getBtcMomentum(exchange);
-    log(`🔗 BTC Momentum: ${btcMomentum}`);
+    // log(`${logPrefix} 🔗 BTC Momentum: ${btcMomentum}`); // Reduce noise, maybe log only if blocking
   }
   
   // 1.5. Calculate Volatility Adjustment
@@ -123,7 +124,6 @@ async function runTradingCycle() {
       
       if (currentATR !== null && !isNaN(currentATR)) {
         // Calculate Average ATR (Baseline)
-        // Use the last N periods to determine "average" volatility
         const avgPeriod = vaConfig.avgAtrPeriod || 100;
         const history = atrSeries.slice(-avgPeriod).filter(v => v !== null); 
         const averageATR = history.reduce((sum, val) => sum + val, 0) / history.length;
@@ -152,190 +152,180 @@ async function runTradingCycle() {
           multiplier: multiplier.toFixed(2)
         };
 
-        log(`📉 Volatility: ATR=${currentATR.toFixed(4)} (Avg=${averageATR.toFixed(4)}) → Multiplier: ${multiplier.toFixed(2)}x`);
-        log(`🛠️ Adjusted TP/SL: SL=${currentSlPercent}% (Base ${config.trading.stopLossPercent}%), TP=${currentTpPercent}% (Base ${config.trading.takeProfitPercent}%)`);
+        log(`${logPrefix} 📉 Volatility: ATR=${currentATR.toFixed(4)} (Multiplier: ${multiplier.toFixed(2)}x) → SL=${currentSlPercent.toFixed(2)}%, TP=${currentTpPercent.toFixed(2)}%`);
       }
     }
   }
 
-  // 2. Check stop loss / take profit / trailing stop for open positions
+  // 2. Check stop loss / take profit / trailing stop for open positions of this symbol
+  // Note: checkPositions updated to accept symbol
   const closedTrades = trader.checkPositions(
+    symbol,
     currentPrice,
     currentSlPercent,
     currentTpPercent,
     config.trading.trailingStop
   );
   if (closedTrades.length > 0) {
-    log(`📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
+    log(`${logPrefix} 📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
   }
   
-  // 2.5. Check drawdown protection
+  // 2.5. Check drawdown protection (Global check, but pauses everything)
   const drawdownStatus = trader.checkDrawdownProtection(config.trading.drawdownProtection);
   if (drawdownStatus.triggered) {
-    log(`🚨 DRAWDOWN PROTECTION: Trading paused for ${drawdownStatus.pauseDurationMinutes} minutes (Drawdown: ${drawdownStatus.drawdownPercent}%)`);
+    log(`🚨 DRAWDOWN PROTECTION: Trading paused for ${drawdownStatus.pauseDurationMinutes} minutes`);
+    return; // Stop processing
   } else if (drawdownStatus.paused) {
     log(`⏸️ Trading paused (${drawdownStatus.remainingMinutes} minutes remaining)`);
-  } else if (drawdownStatus.resumed) {
-    log(`▶️ Trading resumed after drawdown pause`);
+    return; // Stop processing
   }
   
   // 2.6. Get current stats for position sizing
   const stats = trader.getStats();
   
-  // 3. Get strategy signal (pass multi-candles or single candles based on strategy)
+  // 3. Get strategy signal
   const strategy = Strategies.getStrategy(config.strategy.name);
   let signal;
   
   if (isMultiTF) {
     signal = strategy(multiCandles, config.strategy.params);
-    if (signal.indicators) {
-      log(`   └─ 15m: ${signal.indicators.trend15m} | 5m: ${signal.indicators.momentum5m} | 1m: RSI ${signal.indicators.rsi1m?.toFixed(1)}`);
-    }
   } else {
     signal = strategy(candles, config.strategy.params);
   }
   
-  log(`📈 Strategy Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
+  log(`${logPrefix} 📈 Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
   
   // 3.5. Apply sentiment analysis adjustment
   let sentiment = null;
   try {
-    sentiment = await getSentiment(config.symbol);
-    log(`🧠 Sentiment: ${sentiment.classification} (${sentiment.score}/100) - F&G: ${sentiment.fearGreed.value}, News: ${sentiment.newsScore.value}`);
+    sentiment = await getSentiment(symbol);
+    // Only log if significant or changed
+    // log(`${logPrefix} 🧠 Sentiment: ${sentiment.classification} (${sentiment.score})`);
     
     const originalSignal = signal.signal;
     signal = Strategies.applySentimentAdjustment(signal, sentiment);
     
-    if (signal.sentiment && signal.sentiment.adjustment !== 'none') {
-      log(`🔄 Sentiment Adjustment: ${signal.sentiment.adjustment}`);
-    }
     if (signal.signal !== originalSignal) {
-      log(`⚠️ Signal changed from ${originalSignal.toUpperCase()} to ${signal.signal.toUpperCase()} due to sentiment`);
+      log(`${logPrefix} ⚠️ Signal changed from ${originalSignal.toUpperCase()} to ${signal.signal.toUpperCase()} due to sentiment`);
     }
   } catch (sentimentError) {
-    log(`⚠️ Sentiment fetch failed: ${sentimentError.message}`, 'warn');
+    // Silent fail or debug log
   }
 
-  // Check Time Filter (New Entry Restriction)
+  // Check Time Filter
   const now = new Date();
   const isAllowedTime = isTradeableHour(now, config.trading);
   const isAllowedDay = !isWeekend(now, config.trading);
   const isTimeRestricted = !isAllowedTime || !isAllowedDay;
 
   if (isTimeRestricted) {
-    log(`⏰ Trading paused (low volume hour: ${now.getUTCHours()}:00 UTC)`);
+    log(`${logPrefix} ⏰ Trading restricted (low volume hour)`);
   }
 
   // Check BTC Correlation
   const btcCheck = shouldTradeBasedOnBtc(btcMomentum, signal.signal);
   if (!btcCheck.allowed && (signal.signal === 'buy' || signal.signal === 'short')) {
-     log(`⛔ BTC Correlation Block: ${btcCheck.reason}`);
+     log(`${logPrefix} ⛔ BTC Correlation Block: ${btcCheck.reason}`);
   }
   const isBtcAllowed = btcCheck.allowed;
   
-  // 4. Execute signal with leverage + dynamic position sizing
+  // 4. Execute signal
   const leverage = config.trading.leverage || 1;
   const indicators = signal.indicators || {};
   
+  // Filter positions for this symbol
+  const symbolPositions = trader.positions.filter(p => p.symbol === symbol);
+  const openPositionsCount = symbolPositions.length;
+  const maxPositions = config.trading.maxOpenTradesPerSymbol || 1;
+
   // Handle signal direction changes (reversals)
-  // If BUY signal but we have SHORTs -> Close Shorts
   if (signal.signal === 'buy') {
-    const shortPositions = trader.positions.filter(p => p.type === 'short');
+    const shortPositions = symbolPositions.filter(p => p.type === 'short');
     if (shortPositions.length > 0) {
-      log(`🔄 Switching direction: Closing ${shortPositions.length} SHORT position(s)`);
+      log(`${logPrefix} 🔄 Switching direction: Closing ${shortPositions.length} SHORT position(s)`);
       for (const p of shortPositions) {
         trader.sell(p.id, currentPrice, `Switch to LONG: ${signal.reason}`, indicators);
       }
     }
   }
   
-  // If SHORT signal but we have LONGs -> Close Longs
   if (signal.signal === 'short') {
-    const longPositions = trader.positions.filter(p => !p.type || p.type === 'long');
+    const longPositions = symbolPositions.filter(p => !p.type || p.type === 'long');
     if (longPositions.length > 0) {
-      log(`🔄 Switching direction: Closing ${longPositions.length} LONG position(s)`);
+      log(`${logPrefix} 🔄 Switching direction: Closing ${longPositions.length} LONG position(s)`);
       for (const p of longPositions) {
         trader.sell(p.id, currentPrice, `Switch to SHORT: ${signal.reason}`, indicators);
       }
     }
   }
 
-  // Execute Entry (Only if not time restricted)
-  if (!isTimeRestricted && isBtcAllowed && signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
-    // Check if we should add another position (avoid duplicate entries on same candle/signal usually handled by strategy state, but here we just check limit)
-    
+  // Execute Entry
+  if (!isTimeRestricted && isBtcAllowed && signal.signal === 'buy' && openPositionsCount < maxPositions) {
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
-    log(`📏 Position Sizing (LONG): ${sizing.multiplier}x (${sizing.reason})`);
+    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (${sizing.reason})`);
     
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
-    trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
+    trader.buy(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   } 
-  else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
-    // Calculate dynamic position size based on win rate
+  else if (!isTimeRestricted && isBtcAllowed && signal.signal === 'short' && openPositionsCount < maxPositions) {
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
-    log(`📏 Position Sizing (SHORT): ${sizing.multiplier}x (${sizing.reason})`);
+    log(`${logPrefix} 📏 Sizing: ${sizing.multiplier}x (${sizing.reason})`);
     
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
-    trader.short(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
-  }
-  else if (isTimeRestricted && (signal.signal === 'buy' || signal.signal === 'short')) {
-    log(`⛔ Signal ignored due to time restriction (${signal.signal.toUpperCase()})`);
+    trader.short(symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   }
   
-  // 5. Log stats (refresh after any trades)
-  const finalStats = trader.getStats();
-  log(`💰 Balance: ${finalStats.balance} USDT | Win Rate: ${finalStats.winRate}% | Trades: ${finalStats.totalTrades} | P/L: ${finalStats.totalProfit} USDT`);
+  // Log minimal stats per cycle
+  // log(`${logPrefix} Cycle complete.`);
   
   // Save cycle log
   const cycleLog = {
     timestamp: new Date().toISOString(),
+    symbol,
     price: currentPrice,
     signal,
-    sentiment: sentiment ? {
-      score: sentiment.score,
-      classification: sentiment.classification,
-      fearGreed: sentiment.fearGreed.value,
-      newsScore: sentiment.newsScore.value
-    } : null,
-    stats: finalStats,
-    openPositions: trader.positions.length,
+    sentiment: sentiment ? { score: sentiment.score } : null,
+    stats: trader.getStats(),
   };
   
   const cycleLogFile = path.join(logsDir, 'cycles.jsonl');
   fs.appendFileSync(cycleLogFile, JSON.stringify(cycleLog) + '\n');
-  
-  return finalStats;
 }
 
 // Main loop
 async function main() {
+  const symbols = config.symbols || [config.symbol];
+  
   log('🤖 Crypto Trading Bot Started!');
-  log(`📊 Trading ${config.symbol} on ${config.timeframe} timeframe`);
-  log(`💵 Paper Trading with ${config.paperTrading.initialBalance} USDT`);
-  log(`⚡ Leverage: ${config.trading.leverage}x`);
-  log(`🎯 Strategy: ${config.strategy.name} v${config.strategy.version}`);
+  log(`📊 Trading Pairs: ${symbols.join(', ')}`);
+  log(`🎯 Strategy: ${config.strategy.name}`);
   
+  const runAll = async () => {
+    log('='.repeat(60));
+    for (const symbol of symbols) {
+      try {
+        await runTradingCycle(symbol);
+      } catch (e) {
+        log(`Error running cycle for ${symbol}: ${e.message}`, 'error');
+      }
+    }
+    const stats = trader.getStats();
+    log(`💰 Global Stats: Balance ${stats.balance} | P/L ${stats.totalProfit} | Open Pos: ${stats.openPositions}`);
+  };
+
   // Run immediately
-  await runTradingCycle();
+  await runAll();
   
-  // Then run every 1 minute (matching 1m timeframe)
-  const intervalMs = 60 * 1000; // 1 minute
+  // Then run every 1 minute
+  const intervalMs = 60 * 1000;
   log(`⏰ Next cycle in 1 minute...`);
   
-  setInterval(async () => {
-    try {
-      await runTradingCycle();
-    } catch (error) {
-      log(`Cycle error: ${error.message}`, 'error');
-    }
-  }, intervalMs);
+  setInterval(runAll, intervalMs);
 }
 
-// Export for use as module
 export { runTradingCycle, trader };
 
-// Run if called directly
 if (process.argv[1]?.includes('trader.js')) {
   main().catch(e => {
     log(`Fatal error: ${e.message}`, 'error');

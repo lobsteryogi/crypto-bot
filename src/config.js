@@ -2,6 +2,7 @@
 export const config = {
   // Trading pair
   symbol: 'SOL/USDT',
+  symbols: ['SOL/USDT', 'ETH/USDT', 'AVAX/USDT'],
   
   // Paper trading settings (simulated)
   paperTrading: {
@@ -14,7 +15,8 @@ export const config = {
   trading: {
     tradeAmount: 100, // USDT per trade (before leverage)
     leverage: 10, // 10x leverage
-    maxOpenTrades: 10, // More positions
+    maxOpenTrades: 10, // Total max positions (global)
+    maxOpenTradesPerSymbol: 3, // Max positions per symbol
     stopLossPercent: 1.5, // Tighter SL with leverage
     takeProfitPercent: 2, // Tighter TP with leverage
     trailingStop: {

@@ -224,11 +224,14 @@ export class PaperTrader {
     return { success: true, trade };
   }
 
-  // Check stop loss / take profit / trailing stop for all positions
-  checkPositions(currentPrice, stopLossPercent, takeProfitPercent, trailingStop = null) {
+  // Check stop loss / take profit / trailing stop for positions of a specific symbol
+  checkPositions(symbol, currentPrice, stopLossPercent, takeProfitPercent, trailingStop = null) {
     const closedTrades = [];
     
-    for (const position of [...this.positions]) {
+    // Filter positions to only check those matching the current symbol
+    const symbolPositions = this.positions.filter(p => p.symbol === symbol);
+    
+    for (const position of symbolPositions) {
       const type = position.type || 'long';
       const leverage = position.leverage || 1;
       
