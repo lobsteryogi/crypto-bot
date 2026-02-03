@@ -17,6 +17,11 @@ export const config = {
     maxOpenTrades: 10, // More positions
     stopLossPercent: 1.5, // Tighter SL with leverage
     takeProfitPercent: 2, // Tighter TP with leverage
+    trailingStop: {
+      enabled: true,
+      activationPercent: 1.0, // Activate trailing stop when profit >= 1%
+      trailingPercent: 0.5, // Trail 0.5% below highest price
+    },
   },
   
   // Strategy settings - more aggressive for frequent trades

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { Strategies } from './strategies.js';
 import { PaperTrader } from './paper-trader.js';
+import { getSentiment } from './sentiment.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -60,20 +61,40 @@ async function runTradingCycle() {
   const currentPrice = candles[candles.length - 1].close;
   log(`📊 ${config.symbol} Current Price: ${currentPrice.toFixed(2)} USDT`);
   
-  // 2. Check stop loss / take profit for open positions
+  // 2. Check stop loss / take profit / trailing stop for open positions
   const closedTrades = trader.checkPositions(
     currentPrice,
     config.trading.stopLossPercent,
-    config.trading.takeProfitPercent
+    config.trading.takeProfitPercent,
+    config.trading.trailingStop
   );
   if (closedTrades.length > 0) {
-    log(`📦 Closed ${closedTrades.length} position(s) via SL/TP`);
+    log(`📦 Closed ${closedTrades.length} position(s) via SL/TP/Trailing`);
   }
   
   // 3. Get strategy signal
   const strategy = Strategies.getStrategy(config.strategy.name);
-  const signal = strategy(candles, config.strategy.params);
+  let signal = strategy(candles, config.strategy.params);
   log(`📈 Strategy Signal: ${signal.signal.toUpperCase()} - ${signal.reason}`);
+  
+  // 3.5. Apply sentiment analysis adjustment
+  let sentiment = null;
+  try {
+    sentiment = await getSentiment(config.symbol);
+    log(`🧠 Sentiment: ${sentiment.classification} (${sentiment.score}/100) - F&G: ${sentiment.fearGreed.value}, News: ${sentiment.newsScore.value}`);
+    
+    const originalSignal = signal.signal;
+    signal = Strategies.applySentimentAdjustment(signal, sentiment);
+    
+    if (signal.sentiment && signal.sentiment.adjustment !== 'none') {
+      log(`🔄 Sentiment Adjustment: ${signal.sentiment.adjustment}`);
+    }
+    if (signal.signal !== originalSignal) {
+      log(`⚠️ Signal changed from ${originalSignal.toUpperCase()} to ${signal.signal.toUpperCase()} due to sentiment`);
+    }
+  } catch (sentimentError) {
+    log(`⚠️ Sentiment fetch failed: ${sentimentError.message}`, 'warn');
+  }
   
   // 4. Execute signal with leverage
   if (signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
@@ -96,6 +117,12 @@ async function runTradingCycle() {
     timestamp: new Date().toISOString(),
     price: currentPrice,
     signal,
+    sentiment: sentiment ? {
+      score: sentiment.score,
+      classification: sentiment.classification,
+      fearGreed: sentiment.fearGreed.value,
+      newsScore: sentiment.newsScore.value
+    } : null,
     stats,
     openPositions: trader.positions.length,
   };
@@ -134,7 +161,7 @@ async function main() {
 export { runTradingCycle, trader };
 
 // Run if called directly
-if (process.argv[1].includes('trader.js')) {
+if (process.argv[1]?.includes('trader.js')) {
   main().catch(e => {
     log(`Fatal error: ${e.message}`, 'error');
     process.exit(1);

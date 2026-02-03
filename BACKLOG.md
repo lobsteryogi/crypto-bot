@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
 ## 🔧 Backend (Trading Logic)
-- [ ] Add more indicators: MACD, Bollinger Bands
-- [ ] Trailing stop loss
+- [x] Add more indicators: MACD, Bollinger Bands
+- [x] Trailing stop loss
 - [ ] Dynamic position sizing based on win rate
 - [ ] Multi-timeframe analysis (1m + 5m + 15m)
 - [ ] Add SHORT positions (not just LONG)
@@ -13,6 +13,8 @@
 - [ ] Implement martingale/anti-martingale sizing
 
 ## 🖥️ Frontend (Dashboard)
+- [ ] Alert bar showing changelog (recent bot updates/changes)
+- [ ] Backlog section showing pending/completed items
 - [ ] Real-time price chart with indicators
 - [ ] Trade history table with filters
 - [ ] Win rate by hour of day chart
@@ -23,6 +25,11 @@
 - [ ] Alert/notification settings
 - [ ] Dark/light theme toggle
 - [ ] Mobile-responsive improvements
+
+## 📊 Sentiment Analysis
+- [x] Crypto sentiment analysis for traded coins (news, social, Fear & Greed Index)
+- [x] Integrate sentiment score into trading decisions
+- [ ] Alert on extreme sentiment shifts
 
 ## 🧠 Self-Learning
 - [ ] Auto-adjust RSI thresholds based on win rate

@@ -88,6 +88,8 @@ export class PaperTrader {
       leverage,
       reason,
       openTime: new Date().toISOString(),
+      highestPrice: price, // Track highest price for trailing stop
+      trailingStopActive: false, // Whether trailing stop is activated
     };
 
     this.balance -= cost;
@@ -137,13 +139,40 @@ export class PaperTrader {
     return { success: true, trade };
   }
 
-  // Check stop loss / take profit for all positions
-  checkPositions(currentPrice, stopLossPercent, takeProfitPercent) {
+  // Check stop loss / take profit / trailing stop for all positions
+  checkPositions(currentPrice, stopLossPercent, takeProfitPercent, trailingStop = null) {
     const closedTrades = [];
     
     for (const position of [...this.positions]) {
       const priceChange = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
       
+      // Update highest price for trailing stop
+      if (currentPrice > (position.highestPrice || position.entryPrice)) {
+        position.highestPrice = currentPrice;
+        this.saveState();
+      }
+      
+      // Check trailing stop first (if enabled and activated)
+      if (trailingStop && trailingStop.enabled) {
+        // Activate trailing stop when profit reaches activation threshold
+        if (!position.trailingStopActive && priceChange >= trailingStop.activationPercent) {
+          position.trailingStopActive = true;
+          console.log(`🎯 Trailing stop activated for ${position.symbol} at ${currentPrice.toFixed(2)} (profit: ${priceChange.toFixed(2)}%)`);
+          this.saveState();
+        }
+        
+        // Check trailing stop trigger
+        if (position.trailingStopActive) {
+          const dropFromHigh = ((position.highestPrice - currentPrice) / position.highestPrice) * 100;
+          if (dropFromHigh >= trailingStop.trailingPercent) {
+            const result = this.sell(position.id, currentPrice, `Trailing stop triggered (dropped ${dropFromHigh.toFixed(2)}% from high ${position.highestPrice.toFixed(2)})`);
+            if (result.success) closedTrades.push(result.trade);
+            continue;
+          }
+        }
+      }
+      
+      // Regular stop loss
       if (priceChange <= -stopLossPercent) {
         const result = this.sell(position.id, currentPrice, `Stop loss triggered (${priceChange.toFixed(2)}%)`);
         if (result.success) closedTrades.push(result.trade);
