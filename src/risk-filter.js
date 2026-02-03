@@ -19,9 +19,35 @@ export function shouldTrade(marketConditions) {
         const { byTrend, byVolatility, bySide, byRSI } = patterns.patterns;
         
         const warnings = [];
+        const trend = marketConditions.trend || 'sideways';
+        const side = (marketConditions.side || 'LONG').toUpperCase();
+        
+        // 🔴 HARD BLOCK #1: ห้าม SHORT ใน sideways market (100% fail rate ตามข้อมูล)
+        if (side === 'SHORT' && trend === 'sideways') {
+            return {
+                allowed: false,
+                reason: '🚫 SHORT in sideways market blocked (100% historical loss rate)',
+                warnings: ['Critical: SHORT + sideways = guaranteed loss based on past data']
+            };
+        }
+        
+        // 🔴 HARD BLOCK #2: ถ้า SHORT มี 100% loss rate และมี trade ≥ 5 ครั้ง → block ทั้งหมด
+        if (side === 'SHORT' && bySide && bySide.SHORT) {
+            const shortCount = bySide.SHORT.count || 0;
+            const longCount = bySide.LONG ? (bySide.LONG.count || 0) : 0;
+            const totalCount = shortCount + longCount;
+            
+            if (shortCount >= 5 && longCount === 0) {
+                // ถ้า SHORT ทั้งหมดขาดทุน และไม่มี LONG ที่ชนะเลย
+                return {
+                    allowed: false,
+                    reason: `🚫 SHORT blocked: 100% loss rate (${shortCount} trades, 0 wins)`,
+                    warnings: ['Critical: SHORT strategy completely failing']
+                };
+            }
+        }
         
         // ตรวจสอบ trend
-        const trend = marketConditions.trend || 'sideways';
         if (byTrend && byTrend[trend]) {
             const avgLoss = byTrend[trend].count > 0 ? byTrend[trend].totalLoss / byTrend[trend].count : 0;
             if (byTrend[trend].count >= 5 && avgLoss > 6) {
@@ -39,7 +65,6 @@ export function shouldTrade(marketConditions) {
         }
         
         // ตรวจสอบ side
-        const side = (marketConditions.side || 'LONG').toUpperCase();
         if (bySide && bySide[side]) {
             const avgLoss = bySide[side].count > 0 ? bySide[side].totalLoss / bySide[side].count : 0;
             // เปรียบเทียบกับอีก side
