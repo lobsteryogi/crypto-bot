@@ -1,8 +1,8 @@
 # Crypto Bot Feature Backlog
 
-> **📅 Next Task:** Backlog updated — Drawdown protection completed!
+> **📅 Next Task:** Self-learning integration complete! Trades auto-sync, rules auto-update.
 > 
-> **🕐 Last Updated:** 14:21
+> **🕐 Last Updated:** 15:27 (3 Feb 2026)
 
 ## 🔧 Backend (Trading Logic)
 - [x] Add more indicators: MACD, Bollinger Bands
@@ -43,11 +43,12 @@
 
 ## 🧠 Self-Learning
 - [x] Auto-adjust RSI thresholds based on win rate
-- [ ] Learn best trading hours
+- [x] Learn best trading hours ✅ Hour optimizer implemented!
+- [x] **Sync paper trades to self-learning skill for analysis** ✅ Auto-sync on optimization
+- [x] **Auto-generate and update learned rules in MEMORY.md** ✅ update-rules.js
 - [ ] Learn best leverage for current volatility
-- [ ] Pattern recognition from losing trades
+- [ ] Pattern recognition from losing trades (deeper analysis)
 - [ ] Weekly strategy evolution report
-- [ ] Sync paper trades to self-learning skill for analysis
 
 ## ✅ Completed
 - [x] Basic RSI + MA strategy
