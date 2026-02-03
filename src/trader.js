@@ -326,9 +326,9 @@ async function runTradingCycle(symbol) {
     const mMult = mResult.multiplier;
     
     // Log: "📈 Anti-Martingale: 2 win streak → 2.25x size"
-    if (config.martingale.mode !== 'off' && mStreak > 0) {
-       const modeLabel = config.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
-       const resultType = config.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
+    if (config.trading.martingale.mode !== 'off' && mStreak > 0) {
+       const modeLabel = config.trading.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
+       const resultType = config.trading.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
        log(`📈 ${modeLabel}: ${mStreak} ${resultType} streak → ${mMult.toFixed(2)}x size`);
     }
 
@@ -347,9 +347,9 @@ async function runTradingCycle(symbol) {
     const mMult = mResult.multiplier;
 
     // Log: "📈 Anti-Martingale: 2 win streak → 2.25x size"
-    if (config.martingale.mode !== 'off' && mStreak > 0) {
-       const modeLabel = config.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
-       const resultType = config.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
+    if (config.trading.martingale.mode !== 'off' && mStreak > 0) {
+       const modeLabel = config.trading.martingale.mode === 'anti-martingale' ? 'Anti-Martingale' : 'Martingale';
+       const resultType = config.trading.martingale.mode === 'anti-martingale' ? 'win' : 'loss';
        log(`📈 ${modeLabel}: ${mStreak} ${resultType} streak → ${mMult.toFixed(2)}x size`);
     }
 

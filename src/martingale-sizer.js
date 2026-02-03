@@ -1,6 +1,6 @@
 export class MartingaleSizer {
-  constructor(config) {
-    this.mode = config.mode; // 'martingale' | 'anti-martingale' | 'off'
+  constructor(config = {}) {
+    this.mode = config.mode || 'off'; // 'martingale' | 'anti-martingale' | 'off'
     this.baseSize = config.baseSize; // This might be dynamically passed or static
     this.multiplier = config.multiplier; // e.g., 1.5x
     this.maxMultiplier = config.maxMultiplier; // cap at 3x
