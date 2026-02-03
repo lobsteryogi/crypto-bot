@@ -36,7 +36,7 @@ export class Strategies {
       };
     }
     
-    // Sell signal: RSI overbought AND fast MA crosses below slow MA
+    // Short signal: RSI overbought AND fast MA crosses below slow MA
     if (currentRsi > rsiOverbought && maCrossDown) {
       return { 
         signal: 'short', 
@@ -86,7 +86,7 @@ export class Strategies {
     }
     
     if (currentRsi > rsiOverbought) {
-      return { signal: 'sell', reason: `RSI ${currentRsi.toFixed(2)} > ${rsiOverbought}`, confidence: 60 };
+      return { signal: 'short', reason: `RSI ${currentRsi.toFixed(2)} > ${rsiOverbought}`, confidence: 60 };
     }
     
     return { signal: 'hold', reason: `RSI ${currentRsi.toFixed(2)} is neutral` };
@@ -137,7 +137,7 @@ export class Strategies {
     
     if (bearishCrossover && histogramBearish) {
       return {
-        signal: 'sell',
+        signal: 'short',
         reason: `MACD bearish crossover (${currentMacd.toFixed(4)} < signal ${currentSignal.toFixed(4)})`,
         confidence: Math.min(90, 50 + Math.abs(currentHistogram) * 1000),
         indicators: { macd: currentMacd, signal: currentSignal, histogram: currentHistogram }
@@ -156,7 +156,7 @@ export class Strategies {
       }
       if (prevHistogram > 0 && currentHistogram < 0) {
         return {
-          signal: 'sell',
+          signal: 'short',
           reason: `MACD histogram turned negative (${currentHistogram.toFixed(4)})`,
           confidence: 55,
           indicators: { macd: currentMacd, signal: currentSignal, histogram: currentHistogram }
@@ -206,7 +206,7 @@ export class Strategies {
     const bouncedFromLower = touchedLower && currentClose > currentLower;
     const nearLower = currentClose <= currentLower * 1.001; // Within 0.1% of lower band
     
-    // Sell: Price touches upper band and bounces down
+    // Short: Price touches upper band and bounces down
     const touchedUpper = prevClose >= prevUpper;
     const bouncedFromUpper = touchedUpper && currentClose < currentUpper;
     const nearUpper = currentClose >= currentUpper * 0.999; // Within 0.1% of upper band
@@ -222,7 +222,7 @@ export class Strategies {
       }
       if (bouncedFromUpper) {
         return {
-          signal: 'sell',
+          signal: 'short',
           reason: `Price bounced from upper BB (${currentUpper.toFixed(2)})`,
           confidence: Math.min(85, 60 + pricePosition * 50),
           indicators: { upper: currentUpper, middle: currentMiddle, lower: currentLower, bandWidth, pricePosition }
@@ -239,7 +239,7 @@ export class Strategies {
       }
       if (nearUpper) {
         return {
-          signal: 'sell',
+          signal: 'short',
           reason: `Price at upper BB (${currentUpper.toFixed(2)})`,
           confidence: Math.min(75, 50 + pricePosition * 40),
           indicators: { upper: currentUpper, middle: currentMiddle, lower: currentLower, bandWidth, pricePosition }
@@ -297,9 +297,9 @@ export class Strategies {
       return { signal: 'hold', reason: 'Insufficient data for multi-indicator analysis' };
     }
     
-    // Score each indicator for buy/sell signals
+    // Score each indicator for buy/short signals
     let buyScore = 0;
-    let sellScore = 0;
+    let shortScore = 0;
     const reasons = [];
     
     // RSI scoring
@@ -307,7 +307,7 @@ export class Strategies {
       buyScore++;
       reasons.push(`RSI oversold (${currentRsi.toFixed(1)})`);
     } else if (currentRsi > rsiOverbought) {
-      sellScore++;
+      shortScore++;
       reasons.push(`RSI overbought (${currentRsi.toFixed(1)})`);
     }
     
@@ -328,10 +328,10 @@ export class Strategies {
     }
     
     if (macdBearishCross) {
-      sellScore += 1.5;
+      shortScore += 1.5;
       reasons.push('MACD bearish crossover');
     } else if (macdBearish) {
-      sellScore += 0.5;
+      shortScore += 0.5;
       reasons.push('MACD bearish momentum');
     }
     
@@ -347,10 +347,10 @@ export class Strategies {
     }
     
     if (currentClose >= currentUpper) {
-      sellScore++;
+      shortScore++;
       reasons.push(`Price at upper BB`);
     } else if (pricePosition > 0.8) {
-      sellScore += 0.5;
+      shortScore += 0.5;
       reasons.push(`Price near upper BB (${(pricePosition * 100).toFixed(0)}%)`);
     }
     
@@ -365,11 +365,11 @@ export class Strategies {
       bbLower: currentLower,
       pricePosition,
       buyScore,
-      sellScore
+      shortScore
     };
     
     // Make decision based on confluence
-    if (buyScore >= minConfluence && buyScore > sellScore) {
+    if (buyScore >= minConfluence && buyScore > shortScore) {
       return {
         signal: 'buy',
         reason: `Multi-indicator BUY (score: ${buyScore.toFixed(1)}): ${reasons.join(', ')}`,
@@ -378,18 +378,18 @@ export class Strategies {
       };
     }
     
-    if (sellScore >= minConfluence && sellScore > buyScore) {
+    if (shortScore >= minConfluence && shortScore > buyScore) {
       return {
-        signal: 'sell',
-        reason: `Multi-indicator SELL (score: ${sellScore.toFixed(1)}): ${reasons.join(', ')}`,
-        confidence: Math.min(95, 50 + sellScore * 15),
+        signal: 'short',
+        reason: `Multi-indicator SHORT (score: ${shortScore.toFixed(1)}): ${reasons.join(', ')}`,
+        confidence: Math.min(95, 50 + shortScore * 15),
         indicators
       };
     }
     
     return {
       signal: 'hold',
-      reason: `No confluence (buy: ${buyScore.toFixed(1)}, sell: ${sellScore.toFixed(1)})`,
+      reason: `No confluence (buy: ${buyScore.toFixed(1)}, short: ${shortScore.toFixed(1)})`,
       indicators
     };
   }
@@ -431,20 +431,20 @@ export class Strategies {
           adjusted.reason = `Buy signal blocked by extreme greed (${score})`;
         }
       }
-    } else if (technicalSignal.signal === 'sell') {
+    } else if (technicalSignal.signal === 'short') {
       if (score > 70) {
-        // Greed + sell signal = boost confidence (contrarian)
+        // Greed + short signal = boost confidence (contrarian)
         adjusted.confidence = Math.min(100, (adjusted.confidence || 60) + 15);
         reasons.push(`Sentiment boost: ${classification} (${score})`);
       } else if (score < 30) {
-        // Fear + sell signal = reduce confidence (potentially wrong time to sell)
+        // Fear + short signal = reduce confidence (potentially wrong time to short)
         adjusted.confidence = Math.max(30, (adjusted.confidence || 60) - 15);
         reasons.push(`Sentiment caution: ${classification} (${score})`);
         
         // If extreme fear, potentially override to hold
         if (score < 15 && adjusted.confidence < 50) {
           adjusted.signal = 'hold';
-          adjusted.reason = `Sell signal blocked by extreme fear (${score})`;
+          adjusted.reason = `Short signal blocked by extreme fear (${score})`;
         }
       }
     } else if (technicalSignal.signal === 'hold') {
@@ -453,8 +453,8 @@ export class Strategies {
         adjusted.sentimentSignal = 'buy';
         reasons.push(`Extreme fear: contrarian buy opportunity`);
       } else if (score > 80) {
-        adjusted.sentimentSignal = 'sell';
-        reasons.push(`Extreme greed: contrarian sell opportunity`);
+        adjusted.sentimentSignal = 'short';
+        reasons.push(`Extreme greed: contrarian short opportunity`);
       }
     }
     
@@ -621,7 +621,7 @@ export class Strategies {
     const bullishMomentum = momentum5m === 'bullish' || momentum5m === 'weak_bullish';
     const oversoldEntry = entry1m === 'oversold';
 
-    // SELL: Bearish trend + Bearish momentum + Overbought entry  
+    // SHORT: Bearish trend + Bearish momentum + Overbought entry  
     const bearishTrend = trend15m === 'bearish' || trend15m === 'weak_bearish';
     const bearishMomentum = momentum5m === 'bearish' || momentum5m === 'weak_bearish';
     const overboughtEntry = entry1m === 'overbought';
@@ -649,8 +649,8 @@ export class Strategies {
         
         const confidence = Math.round((trendStrength + momentumStrength + entryStrength) / 3);
         return {
-          signal: 'sell',
-          reason: `MTF SELL: ${reasons.join(' | ')}`,
+          signal: 'short',
+          reason: `MTF SHORT: ${reasons.join(' | ')}`,
           confidence: Math.min(95, confidence),
           indicators,
         };
@@ -658,9 +658,9 @@ export class Strategies {
     } else {
       // Relaxed mode: 2 out of 3 is enough
       let buyScore = (bullishTrend ? 1 : 0) + (bullishMomentum ? 1 : 0) + (oversoldEntry ? 1 : 0);
-      let sellScore = (bearishTrend ? 1 : 0) + (bearishMomentum ? 1 : 0) + (overboughtEntry ? 1 : 0);
+      let shortScore = (bearishTrend ? 1 : 0) + (bearishMomentum ? 1 : 0) + (overboughtEntry ? 1 : 0);
 
-      if (buyScore >= 2 && buyScore > sellScore) {
+      if (buyScore >= 2 && buyScore > shortScore) {
         if (bullishTrend) reasons.push(`15m: ${trend15m}`);
         if (bullishMomentum) reasons.push(`5m: ${momentum5m}`);
         if (oversoldEntry) reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)}`);
@@ -673,15 +673,15 @@ export class Strategies {
         };
       }
 
-      if (sellScore >= 2 && sellScore > buyScore) {
+      if (shortScore >= 2 && shortScore > buyScore) {
         if (bearishTrend) reasons.push(`15m: ${trend15m}`);
         if (bearishMomentum) reasons.push(`5m: ${momentum5m}`);
         if (overboughtEntry) reasons.push(`1m: RSI ${currentRsi1m?.toFixed(1)}`);
         
         return {
-          signal: 'sell',
-          reason: `MTF SELL (${sellScore}/3): ${reasons.join(' | ')}`,
-          confidence: Math.min(85, 50 + sellScore * 15),
+          signal: 'short',
+          reason: `MTF SHORT (${shortScore}/3): ${reasons.join(' | ')}`,
+          confidence: Math.min(85, 50 + shortScore * 15),
           indicators,
         };
       }

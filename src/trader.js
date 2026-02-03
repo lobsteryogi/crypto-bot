@@ -146,20 +146,50 @@ async function runTradingCycle() {
   }
   
   // 4. Execute signal with leverage + dynamic position sizing
+  const leverage = config.trading.leverage || 1;
+  const indicators = signal.indicators || {};
+  
+  // Handle signal direction changes (reversals)
+  // If BUY signal but we have SHORTs -> Close Shorts
+  if (signal.signal === 'buy') {
+    const shortPositions = trader.positions.filter(p => p.type === 'short');
+    if (shortPositions.length > 0) {
+      log(`🔄 Switching direction: Closing ${shortPositions.length} SHORT position(s)`);
+      for (const p of shortPositions) {
+        trader.sell(p.id, currentPrice, `Switch to LONG: ${signal.reason}`, indicators);
+      }
+    }
+  }
+  
+  // If SHORT signal but we have LONGs -> Close Longs
+  if (signal.signal === 'short') {
+    const longPositions = trader.positions.filter(p => !p.type || p.type === 'long');
+    if (longPositions.length > 0) {
+      log(`🔄 Switching direction: Closing ${longPositions.length} LONG position(s)`);
+      for (const p of longPositions) {
+        trader.sell(p.id, currentPrice, `Switch to SHORT: ${signal.reason}`, indicators);
+      }
+    }
+  }
+
+  // Execute Entry
   if (signal.signal === 'buy' && trader.positions.length < config.trading.maxOpenTrades) {
-    const leverage = config.trading.leverage || 1;
+    // Check if we should add another position (avoid duplicate entries on same candle/signal usually handled by strategy state, but here we just check limit)
     
     // Calculate dynamic position size based on win rate
     const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
-    log(`📏 Position Sizing: ${sizing.multiplier}x (${sizing.reason})`);
+    log(`📏 Position Sizing (LONG): ${sizing.multiplier}x (${sizing.reason})`);
     
     const effectiveAmount = (sizing.amount * leverage) / currentPrice;
     trader.buy(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
-  } else if (signal.signal === 'sell' && trader.positions.length > 0) {
-    // Close oldest position
-    const oldestPosition = trader.positions[0];
-    const indicators = signal.indicators || {};
-    trader.sell(oldestPosition.id, currentPrice, signal.reason, indicators);
+  } 
+  else if (signal.signal === 'short' && trader.positions.length < config.trading.maxOpenTrades) {
+    // Calculate dynamic position size based on win rate
+    const sizing = PositionSizer.getPositionSize(config.trading.tradeAmount, stats, config.trading.positionSizing);
+    log(`📏 Position Sizing (SHORT): ${sizing.multiplier}x (${sizing.reason})`);
+    
+    const effectiveAmount = (sizing.amount * leverage) / currentPrice;
+    trader.short(config.symbol, currentPrice, effectiveAmount, signal.reason, leverage);
   }
   
   // 5. Log stats (refresh after any trades)
