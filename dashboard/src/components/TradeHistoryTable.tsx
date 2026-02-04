@@ -55,8 +55,8 @@ export const TradeHistoryTable: React.FC<Props> = ({ trades, filters, onFilterCh
         t.closeTime ? new Date(t.closeTime).toISOString() : '',
         t.entryPrice,
         t.exitPrice,
-        t.profit.toFixed(2),
-        t.profitPercent.toFixed(2),
+        t.profit?.toFixed(2),
+        t.profitPercent?.toFixed(2),
         `"${t.reason.replace(/"/g, '""')}"`,
         `"${t.closeReason?.replace(/"/g, '""') || ''}"`
       ].join(','))
@@ -96,10 +96,10 @@ export const TradeHistoryTable: React.FC<Props> = ({ trades, filters, onFilterCh
           </div>
           <div className="text-right">
             <div className={cn("font-bold tabular-nums", isProfitable ? 'text-success' : 'text-error')}>
-              {isProfitable ? '+' : ''}{trade.profit.toFixed(2)}
+              {isProfitable ? '+' : ''}{trade.profit?.toFixed(2)}
             </div>
             <div className={cn("text-xs tabular-nums", isProfitable ? 'text-success' : 'text-error')}>
-              {isProfitable ? '+' : ''}{trade.profitPercent.toFixed(2)}%
+              {isProfitable ? '+' : ''}{trade.profitPercent?.toFixed(2)}%
             </div>
           </div>
         </div>
@@ -266,10 +266,10 @@ export const TradeHistoryTable: React.FC<Props> = ({ trades, filters, onFilterCh
                     <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--muted-foreground)]">{trade.entryPrice}</td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--muted-foreground)]">{trade.exitPrice}</td>
                     <td className={cn("px-4 py-3 text-right font-mono tabular-nums font-bold", isProfitable ? 'text-success' : 'text-error')}>
-                      {isProfitable ? '+' : ''}{trade.profit.toFixed(2)}
+                      {isProfitable ? '+' : ''}{trade.profit?.toFixed(2)}
                     </td>
                     <td className={cn("px-4 py-3 text-right font-mono tabular-nums", isProfitable ? 'text-success' : 'text-error')}>
-                      {isProfitable ? '+' : ''}{trade.profitPercent.toFixed(2)}%
+                      {isProfitable ? '+' : ''}{trade.profitPercent?.toFixed(2)}%
                     </td>
                     <td className="px-4 py-3 text-xs text-[var(--muted-foreground)] max-w-[200px] truncate hidden lg:table-cell" title={trade.reason}>
                       {trade.reason}

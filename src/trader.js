@@ -40,11 +40,14 @@ async function runTradingCycle(symbol) {
     if (!candles || candles.length < 30) return;
   }
 
-  const currentPrice = candles[candles.length - 1].close;
+  const lastCandle = candles[candles.length - 1];
+  const currentPrice = lastCandle.close;
+  const highPrice = lastCandle.high;
+  const lowPrice = lastCandle.low;
 
   // 2. Manage Existing Positions (SL/TP)
   const adj = engine.getVolatilityAdjustments(candles);
-  const closed = pm.checkExistingPositions(symbol, currentPrice, adj.sl, adj.tp);
+  const closed = pm.checkExistingPositions(symbol, currentPrice, highPrice, lowPrice);
   if (closed.length > 0) log(`📦 Closed ${closed.length} position(s)`, 'info', symbol);
 
   // 3. Global Filters (BTC, Time, Drawdown)
@@ -61,10 +64,17 @@ async function runTradingCycle(symbol) {
 
   if (analysis.signal === 'hold') return;
 
-  // 5. Direction Switch (Reversals)
+  // 5. Check Cooldown (after SL hit)
+  if (pm.isInCooldown(symbol)) {
+    const remaining = Math.ceil(pm.getCooldownRemaining(symbol) / 60000);
+    log(`⏸️ Skipping entry - ${symbol} in cooldown (${remaining}m remaining)`, 'info', symbol);
+    return;
+  }
+
+  // 6. Direction Switch (Reversals)
   handleReversals(symbol, analysis.signal, currentPrice, analysis.reason);
 
-  // 6. Entry Execution
+  // 7. Entry Execution
   const btcCheck = shouldTradeBasedOnBtc(btcMomentum, analysis.signal);
   if (!btcCheck.allowed) return;
 

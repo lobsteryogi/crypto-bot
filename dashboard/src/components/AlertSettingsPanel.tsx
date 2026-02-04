@@ -241,7 +241,7 @@ export function AlertSettingsPanel({ isOpen, onClose, onSettingsChange, currentP
               </div>
               
               <div className="text-xs text-gray-500">
-                Current Price: <span className="text-white font-mono">${currentPrice.toFixed(2)}</span>
+                Current Price: <span className="text-white font-mono">${currentPrice?.toFixed(2)}</span>
               </div>
 
               <div className="space-y-2 mt-4 max-h-[250px] overflow-y-auto">

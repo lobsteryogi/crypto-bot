@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import Database from 'better-sqlite3';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,12 +11,10 @@ async function getCurrentPrices(symbols: string[]): Promise<Record<string, numbe
   const prices: Record<string, number> = {};
   
   try {
-    // Convert symbols to Binance format (SOL/USDT -> SOLUSDT)
     const binanceSymbols = [...new Set(symbols.map(s => s.replace('/', '')))];
     
     if (binanceSymbols.length === 0) return prices;
     
-    // Fetch all prices at once
     const res = await fetch('https://api.binance.com/api/v3/ticker/price', {
       next: { revalidate: 0 }
     });
@@ -39,6 +38,78 @@ async function getCurrentPrices(symbols: string[]): Promise<Record<string, numbe
   return prices;
 }
 
+// Get data from SQLite database
+function getDataFromDb(dbPath: string) {
+  if (!fs.existsSync(dbPath)) {
+    return { balance: 10000, trades: [], positions: [] };
+  }
+  
+  const db = new Database(dbPath, { readonly: true });
+  
+  try {
+    // Get balance
+    const balanceRow = db.prepare('SELECT value FROM state WHERE key = ?').get('balance') as any;
+    const balance = balanceRow ? parseFloat(balanceRow.value) : 10000;
+    
+    // Get closed trades
+    const trades = db.prepare(`
+      SELECT 
+        id,
+        symbol,
+        side,
+        entry_price as entryPrice,
+        exit_price as exitPrice,
+        amount,
+        leverage,
+        pnl as profit,
+        pnl_percent as profitPercent,
+        reason,
+        exit_reason as exitReason,
+        opened_at as openTime,
+        closed_at as closeTime,
+        rsi,
+        trend,
+        sentiment
+      FROM trades 
+      ORDER BY closed_at DESC
+    `).all() as any[];
+    
+    // Get open positions
+    const positions = db.prepare(`
+      SELECT 
+        id,
+        symbol,
+        side as type,
+        entry_price as entryPrice,
+        amount,
+        leverage,
+        margin,
+        stop_loss as stopLoss,
+        take_profit as takeProfit,
+        trailing_active as trailingActive,
+        highest_price as highestPrice,
+        lowest_price as lowestPrice,
+        opened_at as openTime,
+        reason
+      FROM positions
+    `).all() as any[];
+    
+    // Transform side to type for compatibility
+    const formattedPositions = positions.map(p => ({
+      ...p,
+      type: p.type === 'LONG' ? 'long' : 'short'
+    }));
+    
+    db.close();
+    
+    return { balance, trades, positions: formattedPositions };
+  } catch (error) {
+    console.error('Error reading from SQLite:', error);
+    db.close();
+    return { balance: 10000, trades: [], positions: [] };
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -49,19 +120,13 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'closeTime';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    const rootDir = path.join(process.cwd(), '..');
+    // Use absolute path to crypto-bot data directory
+    const rootDir = '/root/.openclaw/workspace/crypto-bot';
     const dataDir = path.join(rootDir, 'data');
-    const statePath = path.join(dataDir, 'paper_state.json');
+    const dbPath = path.join(dataDir, 'trades.db');
     
-    // --- 1. Fetch Bot State ---
-    let state: any = {};
-    if (fs.existsSync(statePath)) {
-      state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    }
-
-    const trades = state.trades || [];
-    const rawPositions = state.positions || [];
-    const balance = state.balance || 10000;
+    // --- 1. Fetch Bot State from SQLite ---
+    const { balance, trades, positions: rawPositions } = getDataFromDb(dbPath);
     const initialBalance = 10000;
 
     // --- 1.1. Fetch current prices for open positions ---
@@ -74,7 +139,6 @@ export async function GET(request: NextRequest) {
       const isLong = p.type === 'long';
       const isShort = p.type === 'short';
       
-      // Calculate P/L
       let unrealizedPnL = 0;
       let unrealizedPnLPercent = 0;
       
@@ -86,25 +150,21 @@ export async function GET(request: NextRequest) {
         unrealizedPnLPercent = ((p.entryPrice - currentPrice) / p.entryPrice) * 100;
       }
       
-      // Apply leverage if exists
       const leverage = p.leverage || 1;
       unrealizedPnLPercent *= leverage;
       
-      // Calculate TP/SL from entry price if not set
-      // Default: TP = +2% profit, SL = -1.5% loss
-      let takeProfit = p.takeProfit || p.take_profit || null;
-      let stopLoss = p.stopLoss || p.stop_loss || null;
+      let takeProfit = p.takeProfit || null;
+      let stopLoss = p.stopLoss || null;
       
-      // If not set, estimate based on standard risk management
       if (!takeProfit) {
-        const tpPercent = 0.02; // 2% target
+        const tpPercent = 0.02;
         takeProfit = isLong 
           ? p.entryPrice * (1 + tpPercent)
           : p.entryPrice * (1 - tpPercent);
       }
       
       if (!stopLoss) {
-        const slPercent = 0.015; // 1.5% SL
+        const slPercent = 0.015;
         stopLoss = isLong
           ? p.entryPrice * (1 - slPercent)
           : p.entryPrice * (1 + slPercent);
@@ -123,14 +183,13 @@ export async function GET(request: NextRequest) {
     // --- Global Stats (Unfiltered) ---
     const allWins = trades.filter((t: any) => t.profit > 0);
     const allLosses = trades.filter((t: any) => t.profit <= 0);
-    const totalProfit = trades.reduce((sum: number, t: any) => sum + t.profit, 0);
+    const totalProfit = trades.reduce((sum: number, t: any) => sum + (t.profit || 0), 0);
     const winRate = trades.length > 0 ? (allWins.length / trades.length * 100) : 0;
     const roi = ((balance - initialBalance) / initialBalance * 100);
 
     // --- Filtering ---
     let filteredTrades = [...trades];
 
-    // Date Range
     const now = new Date();
     if (range !== 'all') {
       filteredTrades = filteredTrades.filter((t: any) => {
@@ -145,7 +204,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Status (Win/Loss)
     if (status !== 'all') {
       filteredTrades = filteredTrades.filter((t: any) => {
         if (status === 'win') return t.profit > 0;
@@ -154,7 +212,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Profit Range
     if (minProfit) {
       filteredTrades = filteredTrades.filter((t: any) => t.profit >= parseFloat(minProfit));
     }
@@ -162,19 +219,16 @@ export async function GET(request: NextRequest) {
       filteredTrades = filteredTrades.filter((t: any) => t.profit <= parseFloat(maxProfit));
     }
 
-    // Sorting
     filteredTrades.sort((a: any, b: any) => {
       let valA = a[sortBy];
       let valB = b[sortBy];
 
-      // Handle dates and numbers
       if (sortBy.toLowerCase().includes('time')) {
         valA = new Date(valA || 0).getTime();
         valB = new Date(valB || 0).getTime();
       } else if (typeof valA === 'number') {
         // Numbers are fine
       } else {
-        // Strings
         valA = (valA || '').toString().toLowerCase();
         valB = (valB || '').toString().toLowerCase();
       }
@@ -196,7 +250,7 @@ export async function GET(request: NextRequest) {
     trades.forEach((t: any) => {
         if (t.closeTime) {
             const date = new Date(t.closeTime);
-            const dayIndex = date.getDay(); // 0 = Sunday
+            const dayIndex = date.getDay();
             dayStats[dayIndex].trades++;
             if (t.profit > 0) {
                 dayStats[dayIndex].wins++;
@@ -204,14 +258,12 @@ export async function GET(request: NextRequest) {
         }
     });
 
-    // Calculate percentages
     dayStats.forEach(stat => {
         if (stat.trades > 0) {
             stat.winRate = parseFloat(((stat.wins / stat.trades) * 100).toFixed(1));
         }
     });
 
-    // Rotate to Mon-Sun (Sun is index 0 in getDay(), so move it to end)
     const winRateByDay = [...dayStats.slice(1), dayStats[0]];
 
     // --- 2. Fetch Recent Cycles ---
@@ -251,41 +303,30 @@ export async function GET(request: NextRequest) {
       // Ignore
     }
 
-    // --- 5. Fetch Strategy Config from Database ---
-    let configStr = "";
-    try {
-      const configDbPath = path.join(dataDir, 'config.db');
-      if (fs.existsSync(configDbPath)) {
-        // Show a summary of key settings
-        configStr = `// Config loaded from SQLite database
-// Key Settings (via /api/config):
+    // --- 5. Config Summary ---
+    let configStr = `// Config loaded from SQLite database
+// Key Settings:
 {
   "mode": "paper_trading",
   "symbols": ["SOL/USDT", "ETH/USDT", "AVAX/USDT"],
   "leverage": 20,
   "tradeAmount": 150,
-  "stopLoss": "2.5%",
-  "takeProfit": "3.5%",
+  "stopLoss": "1.0-5.0% (ATR-adjusted)",
+  "takeProfit": "1.5-7.0% (ATR-adjusted)",
   "strategy": "multi_timeframe",
   "features": [
     "trailing_stop",
     "volatility_adjustment",
-    "btc_correlation"
+    "btc_correlation",
+    "sl_cooldown"
   ]
 }`;
-      } else {
-        configStr = "Config database not found";
-      }
-    } catch (e) {
-      configStr = "Failed to read config";
-    }
 
-    // Calculate total unrealized P/L
     const totalUnrealizedPnL = positions.reduce((sum: number, p: any) => sum + (p.unrealizedPnL || 0), 0);
 
     return NextResponse.json({
       status: 'running',
-      lastUpdate: state.lastUpdate,
+      lastUpdate: new Date().toISOString(),
       balance,
       initialBalance,
       trades: filteredTrades,

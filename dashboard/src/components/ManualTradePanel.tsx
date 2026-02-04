@@ -65,7 +65,7 @@ export const ManualTradePanel: React.FC<ManualTradePanelProps> = ({ currentPrice
         <div className="text-center">
            <div className="text-gray-400 text-xs uppercase mb-1">Current Price</div>
            <div className="text-3xl font-mono font-bold text-white">
-             ${currentPrice ? currentPrice.toFixed(2) : '---'}
+             ${currentPrice ? currentPrice?.toFixed(2) : '---'}
            </div>
         </div>
 
@@ -133,7 +133,7 @@ export const ManualTradePanel: React.FC<ManualTradePanelProps> = ({ currentPrice
                   <>
                     <div className="flex justify-between border-b border-gray-700 pb-2">
                       <span>Amount</span>
-                      <span className="font-mono text-white">${parseFloat(amount).toFixed(2)}</span>
+                      <span className="font-mono text-white">${parseFloat(amount)?.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between border-b border-gray-700 pb-2">
                       <span>Leverage</span>
@@ -144,7 +144,7 @@ export const ManualTradePanel: React.FC<ManualTradePanelProps> = ({ currentPrice
                 
                 <div className="flex justify-between pt-1">
                   <span>Est. Price</span>
-                  <span className="font-mono text-white">${currentPrice.toFixed(2)}</span>
+                  <span className="font-mono text-white">${currentPrice?.toFixed(2)}</span>
                 </div>
               </div>
 

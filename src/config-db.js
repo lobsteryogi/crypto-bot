@@ -147,10 +147,10 @@ const DEFAULT_CONFIG = {
       enabled: true,
       atrPeriod: 14,
       avgAtrPeriod: 100,
-      minSlPercent: 0.5,
-      maxSlPercent: 3.0,
-      minTpPercent: 1.0,
-      maxTpPercent: 5.0
+      minSlPercent: 1.0,
+      maxSlPercent: 5.0,
+      minTpPercent: 1.5,
+      maxTpPercent: 7.0
     },
     type: 'json',
     description: 'ATR-based TP/SL adjustment'
